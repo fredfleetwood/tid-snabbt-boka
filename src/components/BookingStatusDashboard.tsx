@@ -22,6 +22,15 @@ interface BookingSession {
   completed_at?: string;
 }
 
+interface BookingDetails {
+  logs?: Array<{ message: string; timestamp: string; stage: string }>;
+  message?: string;
+  timestamp?: string;
+  stage?: string;
+  qr_code?: string;
+  [key: string]: any;
+}
+
 interface BookingStatusDashboardProps {
   configId: string;
 }
@@ -64,6 +73,19 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
     return progressMap[session.status as keyof typeof progressMap] || 0;
   };
 
+  // Helper function to safely access booking details
+  const getBookingDetails = (): BookingDetails => {
+    if (!session?.booking_details) return {};
+    if (typeof session.booking_details === 'string') {
+      try {
+        return JSON.parse(session.booking_details);
+      } catch {
+        return {};
+      }
+    }
+    return session.booking_details as BookingDetails;
+  };
+
   // Set up real-time subscription
   useEffect(() => {
     if (!user) return;
@@ -86,12 +108,13 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
             setSession(updatedSession);
             
             // Add to logs if there's a new message
-            if (updatedSession.booking_details?.message) {
+            const details = updatedSession.booking_details as BookingDetails;
+            if (details?.message) {
               setLogs(prev => {
                 const newLog = {
-                  message: updatedSession.booking_details.message,
-                  timestamp: updatedSession.booking_details.timestamp || new Date().toISOString(),
-                  stage: updatedSession.booking_details.stage || updatedSession.status
+                  message: details.message!,
+                  timestamp: details.timestamp || new Date().toISOString(),
+                  stage: details.stage || updatedSession.status
                 };
                 
                 // Avoid duplicates
@@ -156,13 +179,14 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
         setSession(data);
         
         // Load logs from session details
-        if (data.booking_details?.logs) {
-          setLogs(data.booking_details.logs);
-        } else if (data.booking_details?.message) {
+        const details = getBookingDetails();
+        if (details.logs) {
+          setLogs(details.logs);
+        } else if (details.message) {
           setLogs([{
-            message: data.booking_details.message,
-            timestamp: data.booking_details.timestamp || data.created_at,
-            stage: data.booking_details.stage || data.status
+            message: details.message,
+            timestamp: details.timestamp || data.created_at,
+            stage: details.stage || data.status
           }]);
         }
       }
@@ -221,7 +245,7 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
           status: 'cancelled',
           completed_at: new Date().toISOString(),
           booking_details: {
-            ...session.booking_details,
+            ...getBookingDetails(),
             stage: 'cancelled',
             message: '⏹️ Bokning stoppad av användare',
             timestamp: new Date().toISOString()
@@ -246,7 +270,8 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
   };
 
   const isActive = session && ['initializing', 'waiting_bankid', 'searching', 'booking'].includes(session.status);
-  const showQRCode = session?.status === 'waiting_bankid' && session?.booking_details?.qr_code;
+  const bookingDetails = getBookingDetails();
+  const showQRCode = session?.status === 'waiting_bankid' && bookingDetails.qr_code;
 
   return (
     <div className="space-y-6">
@@ -346,7 +371,7 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
       {/* QR Code Display */}
       {showQRCode && (
         <QRCodeDisplay 
-          qrCode={session.booking_details.qr_code}
+          qrCode={bookingDetails.qr_code!}
           onRefresh={() => {
             // Trigger QR code refresh if needed
             console.log('Refreshing QR code...');
