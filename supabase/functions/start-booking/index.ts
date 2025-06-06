@@ -15,16 +15,44 @@ serve(async (req) => {
 
   try {
     console.log('=== START BOOKING FUNCTION CALLED ===');
+    console.log('Request method:', req.method);
+    console.log('Request URL:', req.url);
     
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-    );
+    // Get environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const triggerSecretKey = Deno.env.get('TRIGGER_SECRET_KEY');
+    
+    console.log('Environment check:');
+    console.log('- SUPABASE_URL:', !!supabaseUrl);
+    console.log('- SUPABASE_ANON_KEY:', !!supabaseAnonKey);
+    console.log('- TRIGGER_SECRET_KEY:', !!triggerSecretKey);
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('❌ Missing Supabase environment variables');
+      return new Response(JSON.stringify({ 
+        error: 'Server configuration error: Missing Supabase credentials' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!triggerSecretKey) {
+      console.error('❌ Missing TRIGGER_SECRET_KEY environment variable');
+      return new Response(JSON.stringify({ 
+        error: 'Server configuration error: Missing Trigger.dev API key' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     console.log('Auth header present:', !!authHeader);
-    console.log('Auth header value (first 20 chars):', authHeader ? authHeader.substring(0, 20) + '...' : 'NONE');
     
     if (!authHeader) {
       console.error('❌ No authorization header provided');
@@ -38,12 +66,14 @@ serve(async (req) => {
 
     // Get user from JWT
     const token = authHeader.replace('Bearer ', '');
-    console.log('Token extracted (first 20 chars):', token.substring(0, 20) + '...');
+    console.log('Token extracted (length):', token.length);
     
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
 
-    console.log('Auth result - User:', user ? `${user.id} (${user.email})` : 'NULL');
-    console.log('Auth result - Error:', authError);
+    console.log('Auth result:');
+    console.log('- User ID:', user?.id);
+    console.log('- User email:', user?.email);
+    console.log('- Auth error:', authError?.message);
 
     if (authError || !user) {
       console.error('❌ Authentication failed:', authError);
@@ -55,14 +85,16 @@ serve(async (req) => {
       });
     }
 
-    console.log('✅ User authenticated:', user.id, user.email);
+    console.log('✅ User authenticated:', user.id);
 
     // Parse request body safely
-    let requestBody;
+    let requestBody = {};
     try {
       const bodyText = await req.text();
       console.log('Request body text:', bodyText);
-      requestBody = bodyText ? JSON.parse(bodyText) : {};
+      if (bodyText) {
+        requestBody = JSON.parse(bodyText);
+      }
     } catch (parseError) {
       console.error('❌ Failed to parse request body:', parseError);
       return new Response(JSON.stringify({ 
@@ -76,14 +108,23 @@ serve(async (req) => {
     const { config_id } = requestBody;
     console.log('Requested config_id:', config_id);
 
-    // Get ALL booking configs for this user first for debugging
-    console.log('🔍 Fetching all configs for user...');
-    const { data: allConfigs, error: allConfigsError } = await supabaseClient
+    // Create authenticated client with the user's token
+    const authenticatedClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    });
+
+    // Get ALL booking configs for this user
+    console.log('🔍 Fetching all configs for user:', user.id);
+    const { data: allConfigs, error: allConfigsError } = await authenticatedClient
       .from('booking_configs')
       .select('*')
       .eq('user_id', user.id);
 
-    console.log('All configs query result:');
+    console.log('Database query result:');
     console.log('- Data:', allConfigs);
     console.log('- Error:', allConfigsError);
     console.log('- Count:', allConfigs?.length || 0);
@@ -91,58 +132,25 @@ serve(async (req) => {
     if (allConfigsError) {
       console.error('❌ Database error fetching configs:', allConfigsError);
       return new Response(JSON.stringify({ 
-        error: 'Database error: ' + allConfigsError.message 
+        error: 'Database error: ' + allConfigsError.message,
+        debug: {
+          userId: user.id,
+          queryError: allConfigsError
+        }
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // If no config_id provided, use the first available config
-    let targetConfigId = config_id;
-    if (!targetConfigId && allConfigs && allConfigs.length > 0) {
-      targetConfigId = allConfigs[0].id;
-      console.log('✅ Using first available config:', targetConfigId);
-    }
-
-    if (!targetConfigId) {
-      console.error('❌ No config ID available');
+    if (!allConfigs || allConfigs.length === 0) {
+      console.error('❌ No booking configs found for user');
       return new Response(JSON.stringify({ 
         error: 'No booking configuration found. Please create a booking configuration first.',
         debug: {
           userId: user.id,
-          configsFound: allConfigs?.length || 0,
-          requestedConfigId: config_id
-        }
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Get the specific booking config
-    console.log('🔍 Fetching specific config:', targetConfigId);
-    const { data: config, error: configError } = await supabaseClient
-      .from('booking_configs')
-      .select('*')
-      .eq('id', targetConfigId)
-      .eq('user_id', user.id)
-      .single();
-
-    console.log('Specific config query result:');
-    console.log('- Data:', config);
-    console.log('- Error:', configError);
-
-    if (configError || !config) {
-      console.error('❌ Config fetch error:', configError);
-      console.error('❌ Config not found for ID:', targetConfigId);
-      return new Response(JSON.stringify({ 
-        error: 'Booking config not found for ID: ' + targetConfigId,
-        debug: {
-          configError: configError,
-          targetConfigId,
-          userId: user.id,
-          allConfigIds: allConfigs?.map(c => c.id) || []
+          configsFound: 0,
+          message: 'User has no booking configurations in the database'
         }
       }), {
         status: 404,
@@ -150,16 +158,49 @@ serve(async (req) => {
       });
     }
 
-    console.log('✅ Config found:', config.id);
+    // If no config_id provided, use the first available config
+    let targetConfigId = config_id;
+    let targetConfig = null;
 
-    // Create a booking session with advanced tracking
+    if (targetConfigId) {
+      // Find specific config
+      targetConfig = allConfigs.find(config => config.id === targetConfigId);
+      if (!targetConfig) {
+        console.error('❌ Specific config not found:', targetConfigId);
+        return new Response(JSON.stringify({ 
+          error: 'Specified booking configuration not found',
+          debug: {
+            requestedConfigId: targetConfigId,
+            availableConfigIds: allConfigs.map(c => c.id)
+          }
+        }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      // Use first available config
+      targetConfig = allConfigs[0];
+      targetConfigId = targetConfig.id;
+      console.log('✅ Using first available config:', targetConfigId);
+    }
+
+    console.log('✅ Config selected:', {
+      id: targetConfig.id,
+      license_type: targetConfig.license_type,
+      exam: targetConfig.exam,
+      locations: targetConfig.locations?.length || 0
+    });
+
+    // Create a booking session
     console.log('🔍 Creating booking session...');
-    const { data: session, error: sessionError } = await supabaseClient
+    const { data: session, error: sessionError } = await authenticatedClient
       .from('booking_sessions')
       .insert({
         user_id: user.id,
         config_id: targetConfigId,
         status: 'initializing',
+        started_at: new Date().toISOString(),
         booking_details: {
           stage: 'starting',
           message: '🚀 Startar automatisering...',
@@ -179,7 +220,10 @@ serve(async (req) => {
     if (sessionError || !session) {
       console.error('❌ Session creation error:', sessionError);
       return new Response(JSON.stringify({ 
-        error: 'Failed to create booking session: ' + (sessionError?.message || 'Unknown error')
+        error: 'Failed to create booking session: ' + (sessionError?.message || 'Unknown error'),
+        debug: {
+          sessionError: sessionError
+        }
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -188,44 +232,30 @@ serve(async (req) => {
 
     console.log('✅ Session created:', session.id);
 
-    // Enhanced Trigger.dev job payload
+    // Prepare Trigger.dev job payload
     const advancedPayload = {
       user_id: user.id,
       session_id: session.id,
       config: {
-        license_type: config.license_type,
-        exam: config.exam,
-        vehicle_language: config.vehicle_language,
-        date_ranges: config.date_ranges,
-        locations: config.locations
+        license_type: targetConfig.license_type,
+        exam: targetConfig.exam,
+        vehicle_language: targetConfig.vehicle_language,
+        date_ranges: targetConfig.date_ranges,
+        locations: targetConfig.locations
       },
       automation_settings: {
         max_cycles: 100,
-        cycle_delay: 10000, // 10 seconds between cycles
-        refresh_interval: 30, // Refresh every 30 cycles
-        timeout: 1800000, // 30 minutes total timeout
+        cycle_delay: 10000,
+        refresh_interval: 30,
+        timeout: 1800000,
         retry_attempts: 3
       }
     };
 
-    // Check if Trigger Secret Key is available
-    const triggerSecretKey = Deno.env.get('TRIGGER_SECRET_KEY');
-    console.log('Trigger secret key available:', !!triggerSecretKey);
-    
-    if (!triggerSecretKey) {
-      console.error('❌ TRIGGER_SECRET_KEY not found in environment');
-      return new Response(JSON.stringify({ 
-        error: 'Trigger.dev API key not configured. Please contact support.' 
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     console.log('🚀 Triggering automation job...');
     console.log('Payload:', JSON.stringify(advancedPayload, null, 2));
 
-    // Trigger the advanced automation job using the correct secret key name
+    // Trigger the automation job
     const triggerResponse = await fetch('https://api.trigger.dev/v3/runs', {
       method: 'POST',
       headers: {
@@ -244,17 +274,16 @@ serve(async (req) => {
     if (!triggerResponse.ok) {
       const errorText = await triggerResponse.text();
       console.error('❌ Trigger.dev error response:', errorText);
-      console.error('❌ Trigger.dev status:', triggerResponse.status);
       
       // Update session with error
-      await supabaseClient
+      await authenticatedClient
         .from('booking_sessions')
         .update({
           status: 'error',
-          error_message: 'Failed to start advanced automation: ' + errorText,
+          error_message: 'Failed to start automation: ' + errorText,
           booking_details: {
             stage: 'error',
-            message: '❌ Fel vid start av avancerad automatisering',
+            message: '❌ Fel vid start av automatisering',
             timestamp: new Date().toISOString(),
             triggerError: errorText,
             triggerStatus: triggerResponse.status
@@ -263,7 +292,7 @@ serve(async (req) => {
         .eq('id', session.id);
 
       return new Response(JSON.stringify({ 
-        error: 'Failed to trigger advanced automation: ' + errorText,
+        error: 'Failed to trigger automation: ' + errorText,
         debug: {
           triggerStatus: triggerResponse.status,
           triggerResponse: errorText
@@ -277,8 +306,8 @@ serve(async (req) => {
     const triggerData = await triggerResponse.json();
     console.log('✅ Trigger response data:', triggerData);
 
-    // Update session with advanced tracking
-    await supabaseClient
+    // Update session with trigger run ID
+    await authenticatedClient
       .from('booking_sessions')
       .update({
         status: 'browser_starting',
@@ -286,17 +315,17 @@ serve(async (req) => {
           ...session.booking_details,
           trigger_run_id: triggerData.id,
           stage: 'browser_starting',
-          message: '🌍 Startar webbläsare (WebKit)...',
+          message: '🌍 Startar webbläsare...',
           timestamp: new Date().toISOString(),
           automation_type: 'advanced'
         }
       })
       .eq('id', session.id);
 
-    console.log('✅ Advanced booking automation started successfully:', {
+    console.log('✅ Automation started successfully:', {
       sessionId: session.id,
       triggerRunId: triggerData.id,
-      automationType: 'advanced'
+      configId: targetConfigId
     });
 
     return new Response(JSON.stringify({ 
@@ -307,7 +336,7 @@ serve(async (req) => {
       debug: {
         userId: user.id,
         configId: targetConfigId,
-        message: 'Advanced automation started successfully'
+        message: 'Automation started successfully'
       }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -323,7 +352,7 @@ serve(async (req) => {
       error: error.message || 'An unexpected error occurred',
       debug: {
         errorName: error.name,
-        errorStack: error.stack?.split('\n').slice(0, 5), // First 5 lines of stack
+        errorStack: error.stack?.split('\n').slice(0, 5),
         timestamp: new Date().toISOString()
       }
     }), {

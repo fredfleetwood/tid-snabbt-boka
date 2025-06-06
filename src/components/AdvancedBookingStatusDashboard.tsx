@@ -152,6 +152,8 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
     if (!user || !configId) return;
 
     const loadSession = async () => {
+      console.log('Loading session for user:', user.id, 'config:', configId);
+      
       const { data, error } = await supabase
         .from('booking_sessions')
         .select('*')
@@ -165,6 +167,8 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         console.error('Error loading session:', error);
         return;
       }
+
+      console.log('Loaded session:', data);
 
       if (data) {
         setSession(data);
@@ -212,6 +216,15 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       return;
     }
 
+    if (!configId) {
+      toast({
+        title: "Ingen konfiguration vald",
+        description: "Du måste ha en bokningskonfiguration för att starta automatisering",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsStarting(true);
     setLogs([]);
     setCycleCount(0);
@@ -232,8 +245,8 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       }
 
       console.log('✅ Authentication session valid');
-      console.log('Access token present:', !!session.access_token);
 
+      // Make sure we send the config_id in the request body
       const payload = { config_id: configId };
       console.log('📤 Sending payload:', payload);
 
@@ -342,6 +355,17 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         </Badge>
       </div>
 
+      {/* Debug Information */}
+      <div className="p-4 bg-blue-50 rounded-lg">
+        <h4 className="font-medium text-blue-900 mb-2">Debug Information</h4>
+        <div className="text-sm text-blue-800 space-y-1">
+          <div>User ID: {user?.id || 'Not logged in'}</div>
+          <div>Config ID: {configId || 'Not provided'}</div>
+          <div>Subscribed: {subscribed ? 'Yes' : 'No'}</div>
+          <div>Current Session: {session?.id || 'None'}</div>
+        </div>
+      </div>
+
       {/* Enhanced Status Display */}
       <div className="bg-white p-6 rounded-lg border">
         <div className="flex items-center justify-between mb-4">
@@ -397,7 +421,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
           {!isActive ? (
             <Button 
               onClick={startAdvancedBooking} 
-              disabled={isStarting || !subscribed}
+              disabled={isStarting || !subscribed || !configId}
               className="bg-green-600 hover:bg-green-700"
             >
               {isStarting ? (
@@ -450,7 +474,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
           qrCode={qrCodeData}
           onRefresh={() => {
             console.log('Refreshing QR code...');
-            // Could implement QR refresh logic here
           }}
         />
       )}
