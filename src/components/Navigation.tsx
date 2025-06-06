@@ -1,16 +1,24 @@
 
 import { useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Shield } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { logSecurityEvent } from '@/utils/security';
 
 const Navigation = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, signOut } = useAuth();
 
   const handleSignOut = async () => {
+    logSecurityEvent('USER_LOGOUT_FROM_NAV', { userId: user?.id });
     await signOut();
     setIsMenuOpen(false);
+  };
+
+  const handleSecureNavigation = (path: string) => {
+    if (user && path.includes('dashboard')) {
+      logSecurityEvent('SECURE_NAVIGATION', { path, userId: user.id });
+    }
   };
 
   return (
@@ -38,7 +46,12 @@ const Navigation = () => {
               </a>
               {user ? (
                 <>
-                  <a href="/dashboard" className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors">
+                  <a 
+                    href="/dashboard" 
+                    onClick={() => handleSecureNavigation('/dashboard')}
+                    className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors flex items-center"
+                  >
+                    <Shield className="h-4 w-4 mr-1 text-green-600" />
                     Min sida
                   </a>
                   <Button 
@@ -89,7 +102,12 @@ const Navigation = () => {
               </a>
               {user ? (
                 <>
-                  <a href="/dashboard" className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium">
+                  <a 
+                    href="/dashboard" 
+                    onClick={() => handleSecureNavigation('/dashboard')}
+                    className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium flex items-center"
+                  >
+                    <Shield className="h-4 w-4 mr-2 text-green-600" />
                     Min sida
                   </a>
                   <button 

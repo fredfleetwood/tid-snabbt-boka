@@ -44,7 +44,7 @@ const Hero = () => {
             </a>
           </div>
 
-          {/* Trust indicators */}
+          {/* Trust indicators with enhanced security messaging */}
           <div className="flex flex-wrap justify-center items-center gap-8 text-sm text-gray-500">
             <div className="flex items-center space-x-2">
               <span className="text-green-500">🔒</span>
@@ -55,8 +55,22 @@ const Hero = () => {
               <span>BankID-integration</span>
             </div>
             <div className="flex items-center space-x-2">
+              <span className="text-green-500">🛡️</span>
+              <span>GDPR-säker hantering</span>
+            </div>
+            <div className="flex items-center space-x-2">
               <span className="text-green-500">⚡</span>
               <span>Fungerar 24/7</span>
+            </div>
+          </div>
+
+          {/* Security notice */}
+          <div className="mt-8 p-4 bg-green-50 border border-green-200 rounded-lg max-w-2xl mx-auto">
+            <div className="flex items-center justify-center space-x-2 text-sm text-green-800">
+              <span className="text-green-600">🛡️</span>
+              <span className="font-medium">
+                Dina personuppgifter skyddas enligt GDPR och hanteras säkert med bankgradssäkerhet
+              </span>
             </div>
           </div>
         </div>
