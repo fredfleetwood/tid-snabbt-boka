@@ -55,10 +55,16 @@ serve(async (req) => {
         user_id: user.id,
         config_id: config_id,
         status: 'initializing',
+        started_at: new Date().toISOString(),
         booking_details: {
           stage: 'starting',
           message: 'Startar automatisk bokning...',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          logs: [{
+            message: 'Startar automatisk bokning...',
+            timestamp: new Date().toISOString(),
+            stage: 'starting'
+          }]
         }
       })
       .select()
@@ -68,28 +74,59 @@ serve(async (req) => {
       throw new Error('Failed to create booking session');
     }
 
-    // Trigger the Trigger.dev job
+    // Prepare the webhook URL for Trigger.dev callbacks
+    const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/booking-webhook`;
+
+    // Trigger the Trigger.dev job with browser automation
+    const triggerPayload = {
+      taskIdentifier: 'trafikverket-booking',
+      payload: {
+        user_id: user.id,
+        session_id: session.id,
+        webhook_url: webhookUrl,
+        config: {
+          personnummer: config.personnummer,
+          license_type: config.license_type,
+          exam: config.exam,
+          vehicle_language: config.vehicle_language,
+          date_ranges: config.date_ranges,
+          locations: config.locations
+        },
+        automation_steps: {
+          url: 'https://fp.trafikverket.se/boka/#/',
+          locale: 'sv-SE',
+          geolocation: { latitude: 59.3293, longitude: 18.0686 }, // Stockholm
+          cookies_button: 'Godkänn nödvändiga',
+          booking_button: 'Boka prov',
+          continue_button: 'Fortsätt',
+          bankid_flow: true,
+          vehicle_selection: true,
+          location_search: true,
+          time_search: true,
+          booking_confirmation: true
+        }
+      }
+    };
+
+    console.log('Triggering Trigger.dev job with payload:', {
+      taskIdentifier: triggerPayload.taskIdentifier,
+      user_id: user.id,
+      session_id: session.id,
+      config_summary: {
+        license_type: config.license_type,
+        exam: config.exam,
+        locations_count: config.locations?.length || 0,
+        date_ranges_count: config.date_ranges?.length || 0
+      }
+    });
+
     const triggerResponse = await fetch('https://api.trigger.dev/v3/runs', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${Deno.env.get('TRIGGER_DEV_API_KEY')}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        taskIdentifier: 'trafikverket-booking',
-        payload: {
-          user_id: user.id,
-          session_id: session.id,
-          config: {
-            personnummer: config.personnummer,
-            license_type: config.license_type,
-            exam: config.exam,
-            vehicle_language: config.vehicle_language,
-            date_ranges: config.date_ranges,
-            locations: config.locations
-          }
-        }
-      })
+      body: JSON.stringify(triggerPayload)
     });
 
     if (!triggerResponse.ok) {
@@ -105,7 +142,12 @@ serve(async (req) => {
           booking_details: {
             stage: 'error',
             message: 'Fel vid start av automatisk bokning',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            logs: [{
+              message: 'Fel vid start av automatisk bokning',
+              timestamp: new Date().toISOString(),
+              stage: 'error'
+            }]
           }
         })
         .eq('id', session.id);
@@ -115,29 +157,40 @@ serve(async (req) => {
 
     const triggerData = await triggerResponse.json();
 
-    // Update session with trigger run ID
+    // Update session with trigger run ID and initial status
     await supabaseClient
       .from('booking_sessions')
       .update({
+        status: 'initializing',
         booking_details: {
           ...session.booking_details,
           trigger_run_id: triggerData.id,
           stage: 'triggered',
           message: '🚀 Startar webbläsare...',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          logs: [
+            ...session.booking_details.logs,
+            {
+              message: '🚀 Startar webbläsare...',
+              timestamp: new Date().toISOString(),
+              stage: 'triggered'
+            }
+          ]
         }
       })
       .eq('id', session.id);
 
-    console.log('Booking automation started:', {
+    console.log('Booking automation started successfully:', {
       sessionId: session.id,
-      triggerRunId: triggerData.id
+      triggerRunId: triggerData.id,
+      userId: user.id
     });
 
     return new Response(JSON.stringify({ 
       success: true, 
       session_id: session.id,
-      trigger_run_id: triggerData.id
+      trigger_run_id: triggerData.id,
+      message: 'Automation started successfully'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
