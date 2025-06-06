@@ -7,6 +7,7 @@ import { Control, FieldErrors } from 'react-hook-form';
 import { FormData } from './constants';
 import DateRangePicker, { DateRange } from '../DateRangePicker';
 import LocationSelector from '../LocationSelector';
+import { safeParseDateRanges } from './utils';
 
 interface DateLocationSectionProps {
   control: Control<FormData>;
@@ -31,7 +32,7 @@ const DateLocationSection = ({ control, errors }: DateLocationSectionProps) => {
           name="date_ranges"
           render={({ field, fieldState }) => (
             <DateRangePicker
-              value={field.value || []}
+              value={safeParseDateRanges(field.value || [])}
               onChange={(ranges: DateRange[]) => field.onChange(ranges)}
               error={fieldState.error?.message}
             />
