@@ -5,7 +5,7 @@ interface BookingPayload {
   user_id: string;
   session_id: string;
   config: {
-    personnummer: string;
+    personnummer?: string;
     license_type: string;
     exam: string;
     vehicle_language: string[];
@@ -151,35 +151,93 @@ export const trafikverketBookingAdvanced = task({
       await loginButton.click();
       await page.waitForLoadState('networkidle');
 
-      // Start BankID authentication
-      const personnummerInput = page.locator('input[name="personalNumber"], input#personalNumber');
-      await personnummerInput.fill(config.personnummer);
-      
-      const bankidButton = page.locator('button:has-text("BankID"), input[value*="BankID"]');
+      // Look for BankID option and click it directly
+      const bankidButton = page.locator('button:has-text("BankID"), input[value*="BankID"], a:has-text("BankID")');
       await bankidButton.click();
+      await page.waitForLoadState('networkidle');
 
-      // Update status: Waiting for BankID
+      // Update status: Waiting for BankID with QR code streaming
       await updateSessionStatus('bankid_waiting', {
         stage: 'bankid_waiting',
-        message: '📱 Väntar på BankID-autentisering...',
+        message: '📱 Skanna QR-koden med BankID-appen',
         timestamp: new Date().toISOString(),
         cycle_count: cycleCount,
         slots_found: slotsFound,
-        current_operation: 'bankid_authentication',
-        qr_code: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // Placeholder
+        current_operation: 'bankid_authentication'
       });
 
-      // Wait for login completion (with timeout)
-      await page.waitForURL('**/boka/**', { timeout: 120000 });
+      // QR Code streaming loop
+      let qrStreamCount = 0;
+      const maxQrUpdates = 60; // Max 2 minutes of QR streaming (2 seconds interval)
       
-      await updateSessionStatus('login_success', {
-        stage: 'login_success',
-        message: '✅ Inloggning lyckades!',
-        timestamp: new Date().toISOString(),
-        cycle_count: cycleCount,
-        slots_found: slotsFound,
-        current_operation: 'login_completed'
-      });
+      while (qrStreamCount < maxQrUpdates) {
+        try {
+          // Look for QR code in various possible selectors
+          const qrSelectors = [
+            'img[alt*="QR"]',
+            'img[alt*="qr"]', 
+            'img[src*="qr"]',
+            'img[src*="QR"]',
+            'canvas',
+            '.qr-code img',
+            '[data-testid="qr-code"]',
+            '.bankid-qr img'
+          ];
+          
+          let qrCodeSrc = null;
+          for (const selector of qrSelectors) {
+            const qrElement = page.locator(selector).first();
+            if (await qrElement.isVisible({ timeout: 1000 })) {
+              qrCodeSrc = await qrElement.getAttribute('src');
+              if (qrCodeSrc) break;
+            }
+          }
+
+          // If we found a QR code, stream it
+          if (qrCodeSrc) {
+            await updateSessionStatus('bankid_waiting', {
+              stage: 'bankid_waiting', 
+              message: `📱 Skanna QR-koden med BankID-appen (${qrStreamCount + 1}/${maxQrUpdates})`,
+              timestamp: new Date().toISOString(),
+              cycle_count: cycleCount,
+              slots_found: slotsFound,
+              current_operation: 'bankid_qr_streaming',
+              qr_code: qrCodeSrc
+            });
+          }
+
+          // Check if login was successful (redirect to booking page)
+          if (page.url().includes('/boka/') && !page.url().includes('login')) {
+            await updateSessionStatus('login_success', {
+              stage: 'login_success',
+              message: '✅ BankID-inloggning lyckades!',
+              timestamp: new Date().toISOString(),
+              cycle_count: cycleCount,
+              slots_found: slotsFound,
+              current_operation: 'login_completed'
+            });
+            break;
+          }
+
+          // Check for login error
+          const errorElement = page.locator(':has-text("fel"), :has-text("error"), .error, .alert-danger');
+          if (await errorElement.isVisible({ timeout: 1000 })) {
+            throw new Error('BankID authentication failed');
+          }
+
+          qrStreamCount++;
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Update every 2 seconds
+          
+        } catch (qrError) {
+          console.log('QR streaming error:', qrError);
+          break;
+        }
+      }
+
+      // If we exited the loop without successful login, it's a timeout
+      if (!page.url().includes('/boka/') || page.url().includes('login')) {
+        throw new Error('BankID authentication timeout - QR code not scanned within time limit');
+      }
 
       // Configure exam type and locations
       await updateSessionStatus('selecting_locations', {

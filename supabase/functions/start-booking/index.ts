@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
@@ -76,7 +75,6 @@ serve(async (req) => {
       user_id: user.id,
       session_id: session.id,
       config: {
-        personnummer: config.personnummer,
         license_type: config.license_type,
         exam: config.exam,
         vehicle_language: config.vehicle_language,

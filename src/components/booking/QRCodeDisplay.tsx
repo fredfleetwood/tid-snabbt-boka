@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -73,9 +72,15 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
               ) : (
                 <div className="relative">
                   <img 
-                    src={`data:image/png;base64,${qrCode}`} 
+                    src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`} 
                     alt="BankID QR Code"
-                    className="w-64 h-64 border-2 border-blue-300 rounded-lg"
+                    className="w-64 h-64 border-2 border-blue-300 rounded-lg object-contain bg-white"
+                    onError={(e) => {
+                      // Fallback if base64 doesn't work, try direct URL
+                      if (!qrCode.startsWith('http')) {
+                        e.currentTarget.src = qrCode;
+                      }
+                    }}
                   />
                   
                   {/* Timer overlay */}
