@@ -96,7 +96,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
             // Add to logs with enhanced information
             if (details?.message) {
               setLogs(prev => {
-                const newLog = {
+                const newLog: LogEntry = {
                   message: details.message!,
                   timestamp: details.timestamp || new Date().toISOString(),
                   stage: details.stage || updatedSession.status,
@@ -181,7 +181,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         } else if (details.message) {
           setLogs([{
             message: details.message,
-            timestamp: details.timestamp || data.created_at,
+            timestamp: details.timestamp || data.created_at || new Date().toISOString(),
             stage: details.stage || data.status,
             cycle: details.cycle_count,
             operation: details.current_operation
