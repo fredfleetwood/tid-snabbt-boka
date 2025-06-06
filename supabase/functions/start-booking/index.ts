@@ -8,40 +8,33 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('=== START BOOKING FUNCTION CALLED ===');
-    console.log('Request method:', req.method);
-    console.log('Request URL:', req.url);
+    console.log('🚀 START BOOKING FUNCTION - NEW REQUEST');
+    console.log('Method:', req.method);
+    console.log('Headers:', Object.fromEntries(req.headers.entries()));
     
-    // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const triggerSecretKey = Deno.env.get('TRIGGER_SECRET_KEY');
     
-    console.log('Environment check:');
-    console.log('- SUPABASE_URL:', !!supabaseUrl);
-    console.log('- SUPABASE_ANON_KEY:', !!supabaseAnonKey);
-    console.log('- TRIGGER_SECRET_KEY:', !!triggerSecretKey);
+    console.log('🔧 Environment variables check:');
+    console.log('- SUPABASE_URL exists:', !!supabaseUrl);
+    console.log('- SUPABASE_ANON_KEY exists:', !!supabaseAnonKey);
+    console.log('- TRIGGER_SECRET_KEY exists:', !!triggerSecretKey);
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('❌ Missing Supabase environment variables');
+    if (!supabaseUrl || !supabaseAnonKey || !triggerSecretKey) {
+      console.error('❌ Missing environment variables');
       return new Response(JSON.stringify({ 
-        error: 'Server configuration error: Missing Supabase credentials' 
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (!triggerSecretKey) {
-      console.error('❌ Missing TRIGGER_SECRET_KEY environment variable');
-      return new Response(JSON.stringify({ 
-        error: 'Server configuration error: Missing Trigger.dev API key' 
+        error: 'Missing required environment variables',
+        debug: {
+          hasSupabaseUrl: !!supabaseUrl,
+          hasSupabaseAnonKey: !!supabaseAnonKey,
+          hasTriggerSecretKey: !!triggerSecretKey
+        }
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -49,13 +42,12 @@ serve(async (req) => {
     }
 
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-
-    // Get the authorization header
     const authHeader = req.headers.get('Authorization');
-    console.log('Auth header present:', !!authHeader);
+    
+    console.log('🔐 Auth header check:', !!authHeader);
     
     if (!authHeader) {
-      console.error('❌ No authorization header provided');
+      console.error('❌ No authorization header');
       return new Response(JSON.stringify({ 
         error: 'No authorization header provided' 
       }), {
@@ -64,41 +56,38 @@ serve(async (req) => {
       });
     }
 
-    // Get user from JWT
     const token = authHeader.replace('Bearer ', '');
-    console.log('Token extracted (length):', token.length);
-    
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
 
-    console.log('Auth result:');
+    console.log('👤 User authentication result:');
     console.log('- User ID:', user?.id);
-    console.log('- User email:', user?.email);
     console.log('- Auth error:', authError?.message);
 
     if (authError || !user) {
-      console.error('❌ Authentication failed:', authError);
+      console.error('❌ Authentication failed:', authError?.message);
       return new Response(JSON.stringify({ 
-        error: 'Authentication failed: ' + (authError?.message || 'Unknown auth error')
+        error: 'Authentication failed',
+        debug: { authError: authError?.message }
       }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log('✅ User authenticated:', user.id);
-
-    // Parse request body safely
+    // Parse request body
     let requestBody = {};
     try {
       const bodyText = await req.text();
-      console.log('Request body text:', bodyText);
-      if (bodyText) {
+      console.log('📝 Raw request body:', bodyText);
+      if (bodyText && bodyText.trim()) {
         requestBody = JSON.parse(bodyText);
       }
+      console.log('📋 Parsed request body:', requestBody);
     } catch (parseError) {
       console.error('❌ Failed to parse request body:', parseError);
       return new Response(JSON.stringify({ 
-        error: 'Invalid JSON in request body' 
+        error: 'Invalid JSON in request body',
+        debug: { parseError: parseError.message }
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -106,9 +95,9 @@ serve(async (req) => {
     }
 
     const { config_id } = requestBody;
-    console.log('Requested config_id:', config_id);
+    console.log('🎯 Requested config_id:', config_id);
 
-    // Create authenticated client with the user's token
+    // Create authenticated client
     const authenticatedClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -117,25 +106,25 @@ serve(async (req) => {
       },
     });
 
-    // Get ALL booking configs for this user
-    console.log('🔍 Fetching all configs for user:', user.id);
-    const { data: allConfigs, error: allConfigsError } = await authenticatedClient
+    // Fetch booking configs for this user
+    console.log('🔍 Fetching booking configs for user:', user.id);
+    const { data: allConfigs, error: configsError } = await authenticatedClient
       .from('booking_configs')
       .select('*')
       .eq('user_id', user.id);
 
-    console.log('Database query result:');
-    console.log('- Data:', allConfigs);
-    console.log('- Error:', allConfigsError);
-    console.log('- Count:', allConfigs?.length || 0);
+    console.log('📊 Database query result:');
+    console.log('- Configs found:', allConfigs?.length || 0);
+    console.log('- Query error:', configsError?.message);
+    console.log('- All configs:', allConfigs);
 
-    if (allConfigsError) {
-      console.error('❌ Database error fetching configs:', allConfigsError);
+    if (configsError) {
+      console.error('❌ Database error:', configsError);
       return new Response(JSON.stringify({ 
-        error: 'Database error: ' + allConfigsError.message,
+        error: 'Database error: ' + configsError.message,
         debug: {
           userId: user.id,
-          queryError: allConfigsError
+          configsError: configsError
         }
       }), {
         status: 500,
@@ -144,13 +133,12 @@ serve(async (req) => {
     }
 
     if (!allConfigs || allConfigs.length === 0) {
-      console.error('❌ No booking configs found for user');
+      console.error('❌ No booking configs found');
       return new Response(JSON.stringify({ 
-        error: 'No booking configuration found. Please create a booking configuration first.',
+        error: 'No booking configuration found. Please create one first.',
         debug: {
           userId: user.id,
-          configsFound: 0,
-          message: 'User has no booking configurations in the database'
+          configsFound: 0
         }
       }), {
         status: 404,
@@ -158,20 +146,19 @@ serve(async (req) => {
       });
     }
 
-    // If no config_id provided, use the first available config
-    let targetConfigId = config_id;
+    // Find the right config
     let targetConfig = null;
+    let targetConfigId = config_id;
 
-    if (targetConfigId) {
-      // Find specific config
-      targetConfig = allConfigs.find(config => config.id === targetConfigId);
+    if (config_id) {
+      targetConfig = allConfigs.find(config => config.id === config_id);
       if (!targetConfig) {
-        console.error('❌ Specific config not found:', targetConfigId);
+        console.error('❌ Specified config not found:', config_id);
         return new Response(JSON.stringify({ 
           error: 'Specified booking configuration not found',
           debug: {
-            requestedConfigId: targetConfigId,
-            availableConfigIds: allConfigs.map(c => c.id)
+            requestedConfigId: config_id,
+            availableConfigs: allConfigs.map(c => ({ id: c.id, exam: c.exam }))
           }
         }), {
           status: 404,
@@ -179,21 +166,20 @@ serve(async (req) => {
         });
       }
     } else {
-      // Use first available config
       targetConfig = allConfigs[0];
       targetConfigId = targetConfig.id;
       console.log('✅ Using first available config:', targetConfigId);
     }
 
-    console.log('✅ Config selected:', {
+    console.log('🎯 Selected config:', {
       id: targetConfig.id,
-      license_type: targetConfig.license_type,
       exam: targetConfig.exam,
-      locations: targetConfig.locations?.length || 0
+      license_type: targetConfig.license_type,
+      locations: targetConfig.locations
     });
 
-    // Create a booking session
-    console.log('🔍 Creating booking session...');
+    // Create booking session
+    console.log('📝 Creating booking session...');
     const { data: session, error: sessionError } = await authenticatedClient
       .from('booking_sessions')
       .insert({
@@ -213,27 +199,24 @@ serve(async (req) => {
       .select()
       .single();
 
-    console.log('Session creation result:');
-    console.log('- Data:', session);
-    console.log('- Error:', sessionError);
+    console.log('📄 Session creation result:');
+    console.log('- Session created:', !!session);
+    console.log('- Session ID:', session?.id);
+    console.log('- Session error:', sessionError?.message);
 
     if (sessionError || !session) {
-      console.error('❌ Session creation error:', sessionError);
+      console.error('❌ Failed to create session:', sessionError);
       return new Response(JSON.stringify({ 
         error: 'Failed to create booking session: ' + (sessionError?.message || 'Unknown error'),
-        debug: {
-          sessionError: sessionError
-        }
+        debug: { sessionError }
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log('✅ Session created:', session.id);
-
-    // Prepare Trigger.dev job payload
-    const advancedPayload = {
+    // Prepare Trigger.dev payload
+    const triggerPayload = {
       user_id: user.id,
       session_id: session.id,
       config: {
@@ -241,7 +224,8 @@ serve(async (req) => {
         exam: targetConfig.exam,
         vehicle_language: targetConfig.vehicle_language,
         date_ranges: targetConfig.date_ranges,
-        locations: targetConfig.locations
+        locations: targetConfig.locations,
+        personnummer: targetConfig.personnummer
       },
       automation_settings: {
         max_cycles: 100,
@@ -252,10 +236,15 @@ serve(async (req) => {
       }
     };
 
-    console.log('🚀 Triggering automation job...');
-    console.log('Payload:', JSON.stringify(advancedPayload, null, 2));
+    console.log('🚀 Triggering automation...');
+    console.log('Payload preview:', {
+      user_id: triggerPayload.user_id,
+      session_id: triggerPayload.session_id,
+      exam: triggerPayload.config.exam,
+      license_type: triggerPayload.config.license_type
+    });
 
-    // Trigger the automation job
+    // Call Trigger.dev
     const triggerResponse = await fetch('https://api.trigger.dev/v3/runs', {
       method: 'POST',
       headers: {
@@ -264,18 +253,17 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         taskIdentifier: 'trafikverket-booking-advanced',
-        payload: advancedPayload
+        payload: triggerPayload
       })
     });
 
-    console.log('Trigger response status:', triggerResponse.status);
-    console.log('Trigger response ok:', triggerResponse.ok);
+    console.log('📡 Trigger response status:', triggerResponse.status);
+    console.log('📡 Trigger response ok:', triggerResponse.ok);
 
     if (!triggerResponse.ok) {
       const errorText = await triggerResponse.text();
-      console.error('❌ Trigger.dev error response:', errorText);
+      console.error('❌ Trigger.dev error:', errorText);
       
-      // Update session with error
       await authenticatedClient
         .from('booking_sessions')
         .update({
@@ -285,8 +273,7 @@ serve(async (req) => {
             stage: 'error',
             message: '❌ Fel vid start av automatisering',
             timestamp: new Date().toISOString(),
-            triggerError: errorText,
-            triggerStatus: triggerResponse.status
+            triggerError: errorText
           }
         })
         .eq('id', session.id);
@@ -295,7 +282,7 @@ serve(async (req) => {
         error: 'Failed to trigger automation: ' + errorText,
         debug: {
           triggerStatus: triggerResponse.status,
-          triggerResponse: errorText
+          triggerError: errorText
         }
       }), {
         status: 500,
@@ -312,7 +299,6 @@ serve(async (req) => {
       .update({
         status: 'browser_starting',
         booking_details: {
-          ...session.booking_details,
           trigger_run_id: triggerData.id,
           stage: 'browser_starting',
           message: '🌍 Startar webbläsare...',
@@ -322,7 +308,7 @@ serve(async (req) => {
       })
       .eq('id', session.id);
 
-    console.log('✅ Automation started successfully:', {
+    console.log('🎉 SUCCESS - Automation started:', {
       sessionId: session.id,
       triggerRunId: triggerData.id,
       configId: targetConfigId
@@ -333,26 +319,24 @@ serve(async (req) => {
       session_id: session.id,
       trigger_run_id: triggerData.id,
       automation_type: 'advanced',
-      debug: {
-        userId: user.id,
-        configId: targetConfigId,
-        message: 'Automation started successfully'
-      }
+      message: 'Automation started successfully'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
     
   } catch (error) {
-    console.error('💥 CRITICAL ERROR in start-booking function:', error);
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
+    console.error('💥 CRITICAL ERROR:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack?.split('\n').slice(0, 10)
+    });
     
     return new Response(JSON.stringify({ 
       error: error.message || 'An unexpected error occurred',
       debug: {
-        errorName: error.name,
-        errorStack: error.stack?.split('\n').slice(0, 5),
+        errorType: error.name,
+        errorMessage: error.message,
         timestamp: new Date().toISOString()
       }
     }), {

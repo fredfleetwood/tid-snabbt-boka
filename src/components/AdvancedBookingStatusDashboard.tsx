@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
-import { Play, Square, RotateCcw, Activity, QrCode, Smartphone } from 'lucide-react';
+import { Play, Square, RotateCcw, Activity } from 'lucide-react';
 import QRCodeDisplay from './booking/QRCodeDisplay';
 import LiveUpdatesLog from './booking/LiveUpdatesLog';
 import { BookingSession, LogEntry } from './booking/types';
@@ -33,7 +33,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
   const [showQRCode, setShowQRCode] = useState(false);
   const [qrCodeData, setQrCodeData] = useState<string>('');
 
-  // Enhanced status mapping with Swedish messages
+  // Enhanced status mapping
   const statusMessages = {
     'initializing': { emoji: '🚀', text: 'Startar automatisering...', progress: 5 },
     'browser_starting': { emoji: '🌍', text: 'Startar webbläsare...', progress: 10 },
@@ -54,7 +54,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
     'cancelled': { emoji: '⏹️', text: 'Stoppad av användare', progress: 0 }
   };
 
-  // Set up real-time subscription for advanced tracking
+  // Real-time subscription
   useEffect(() => {
     if (!user) return;
 
@@ -69,7 +69,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('Advanced real-time session update:', payload);
+          console.log('🔄 Real-time session update:', payload);
           
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const updatedSession = payload.new as BookingSession;
@@ -77,7 +77,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
             
             const details = getBookingDetails(updatedSession.booking_details);
             
-            // Update cycle count and slots found
             if (details.cycle_count !== undefined) {
               setCycleCount(details.cycle_count);
             }
@@ -85,7 +84,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
               setSlotsFound(details.slots_found);
             }
 
-            // Handle QR code display
             if (updatedSession.status === 'bankid_waiting' && details.qr_code) {
               setQrCodeData(details.qr_code);
               setShowQRCode(true);
@@ -93,7 +91,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
               setShowQRCode(false);
             }
             
-            // Add to logs with enhanced information
             if (details?.message) {
               setLogs(prev => {
                 const newLog: LogEntry = {
@@ -110,22 +107,22 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
                 );
                 
                 if (!exists) {
-                  return [...prev, newLog].slice(-50); // Keep last 50 logs
+                  return [...prev, newLog].slice(-50);
                 }
                 return prev;
               });
             }
             
-            // Enhanced toast notifications
+            // Toast notifications
             if (updatedSession.status === 'completed') {
               toast({
                 title: "🎉 Automatisering klar!",
-                description: "Din provtid har bokats framgångsrikt. Bekräftelse skickas via email.",
+                description: "Din provtid har bokats framgångsrikt.",
               });
             } else if (updatedSession.status === 'error') {
               toast({
                 title: "❌ Fel uppstod",
-                description: updatedSession.error_message || "Ett oväntat fel inträffade under automationen.",
+                description: updatedSession.error_message || "Ett fel inträffade under automationen.",
                 variant: "destructive"
               });
             } else if (updatedSession.status === 'times_found') {
@@ -139,7 +136,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       )
       .subscribe((status) => {
         setIsConnected(status === 'SUBSCRIBED');
-        console.log('Advanced real-time subscription status:', status);
+        console.log('📡 Real-time subscription status:', status);
       });
 
     return () => {
@@ -147,12 +144,12 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
     };
   }, [user, toast]);
 
-  // Load existing session with enhanced data
+  // Load existing session
   useEffect(() => {
     if (!user || !configId) return;
 
     const loadSession = async () => {
-      console.log('Loading session for user:', user.id, 'config:', configId);
+      console.log('📊 Loading session for user:', user.id, 'config:', configId);
       
       const { data, error } = await supabase
         .from('booking_sessions')
@@ -164,22 +161,20 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         .maybeSingle();
 
       if (error) {
-        console.error('Error loading session:', error);
+        console.error('❌ Error loading session:', error);
         return;
       }
 
-      console.log('Loaded session:', data);
+      console.log('📄 Loaded session:', data);
 
       if (data) {
         setSession(data);
         
         const details = getBookingDetails(data.booking_details);
         
-        // Set enhanced tracking data
         if (details.cycle_count !== undefined) setCycleCount(details.cycle_count);
         if (details.slots_found !== undefined) setSlotsFound(details.slots_found);
         
-        // Load logs from session details
         if (details.logs) {
           setLogs(details.logs);
         } else if (details.message) {
@@ -198,10 +193,17 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
   }, [user, configId]);
 
   const startAdvancedBooking = async () => {
+    console.log('🚀 Starting advanced booking automation...');
+    console.log('📋 Debug info:', {
+      user: user?.id,
+      configId: configId,
+      subscribed: subscribed
+    });
+
     if (!subscribed) {
       toast({
         title: "Aktivt abonnemang krävs",
-        description: "Du behöver en aktiv prenumeration för att starta avancerad automatisering",
+        description: "Du behöver en aktiv prenumeration för att starta automatisering",
         variant: "destructive"
       });
       return;
@@ -231,35 +233,27 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
     setSlotsFound(0);
     setShowQRCode(false);
 
-    console.log('🚀 Starting advanced booking automation...');
-    console.log('User:', user.id);
-    console.log('Config ID:', configId);
-
     try {
-      // Get the current session to ensure we have proper authentication
+      // Get current session for authentication
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session) {
-        console.error('❌ Session error:', sessionError);
+        console.error('❌ Auth session error:', sessionError);
         throw new Error('Authentication session expired. Please refresh and try again.');
       }
 
       console.log('✅ Authentication session valid');
-
-      // Make sure we send the config_id in the request body
-      const payload = { config_id: configId };
-      console.log('📤 Sending payload:', payload);
+      console.log('📤 Calling start-booking with config_id:', configId);
 
       const { data, error } = await supabase.functions.invoke('start-booking', {
-        body: payload,
+        body: { config_id: configId },
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       });
 
-      console.log('📥 Function response data:', data);
-      console.log('📥 Function response error:', error);
+      console.log('📥 Function response:', { data, error });
 
       if (error) {
         console.error('❌ Supabase function error:', error);
@@ -268,22 +262,21 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
 
       if (data?.error) {
         console.error('❌ Function returned error:', data.error);
-        console.log('🔍 Debug info:', data.debug);
         throw new Error(data.error);
       }
 
       if (data?.success) {
-        console.log('✅ Advanced automation started successfully');
+        console.log('✅ Automation started successfully');
         toast({
-          title: "🚀 Avancerad automatisering startad",
-          description: "Automatisk bokning med avancerade funktioner har startats.",
+          title: "🚀 Automatisering startad",
+          description: "Avancerad automatisering har startats framgångsrikt.",
         });
       } else {
         console.error('❌ Unexpected response format:', data);
         throw new Error('Unexpected response from server');
       }
     } catch (error) {
-      console.error('💥 Error starting advanced booking:', error);
+      console.error('💥 Error starting automation:', error);
       
       let errorMessage = 'Ett oväntat fel inträffade';
       
@@ -323,10 +316,10 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
 
       toast({
         title: "⏹️ Automatisering stoppad",
-        description: "Den avancerade automatiseringen har stoppats säkert.",
+        description: "Automatiseringen har stoppats säkert.",
       });
     } catch (error) {
-      console.error('Error stopping advanced booking:', error);
+      console.error('Error stopping automation:', error);
       toast({
         title: "Kunde inte stoppa automatisering",
         description: "Ett fel inträffade när automationen skulle stoppas",
@@ -366,7 +359,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         </div>
       </div>
 
-      {/* Enhanced Status Display */}
+      {/* Status Display */}
       <div className="bg-white p-6 rounded-lg border">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
@@ -394,7 +387,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
           <Progress value={currentStatus.progress} className="w-full" />
         </div>
 
-        {/* Enhanced Tracking Information */}
+        {/* Tracking Information */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           <div className="text-center p-3 bg-gray-50 rounded">
             <div className="text-2xl font-bold text-blue-600">{cycleCount}</div>
@@ -468,13 +461,11 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         </div>
       </div>
 
-      {/* QR Code Display for BankID */}
+      {/* QR Code Display */}
       {showQRCode && qrCodeData && (
         <QRCodeDisplay 
           qrCode={qrCodeData}
-          onRefresh={() => {
-            console.log('Refreshing QR code...');
-          }}
+          onRefresh={() => console.log('Refreshing QR code...')}
         />
       )}
 
@@ -487,7 +478,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         </Alert>
       )}
 
-      {/* Enhanced Live Updates Log */}
+      {/* Live Updates Log */}
       <LiveUpdatesLog logs={logs} />
     </div>
   );
