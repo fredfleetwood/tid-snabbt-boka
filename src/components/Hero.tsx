@@ -1,11 +1,14 @@
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useSubscription } from '@/hooks/useSubscription';
+import SubscriptionButton from './SubscriptionButton';
 
 const Hero = () => {
   const { user } = useAuth();
+  const { subscribed } = useSubscription();
 
   const getStartedLink = user ? '/dashboard' : '/auth';
-  const getStartedText = user ? 'Till min sida' : 'Kom igång nu - 300kr';
+  const getStartedText = user ? (subscribed ? 'Till min sida' : 'Till min sida') : 'Kom igång nu - 300kr';
 
   return (
     <section className="bg-gradient-to-br from-blue-50 to-white py-16 lg:py-24">
@@ -30,12 +33,16 @@ const Hero = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-            <a 
-              href={getStartedLink} 
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all"
-            >
-              {getStartedText}
-            </a>
+            {user && !subscribed ? (
+              <SubscriptionButton />
+            ) : (
+              <a 
+                href={getStartedLink} 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all"
+              >
+                {getStartedText}
+              </a>
+            )}
             <a 
               href="#how-it-works" 
               className="text-blue-600 hover:text-blue-700 px-8 py-4 text-lg font-semibold transition-colors"

@@ -1,7 +1,13 @@
 
 import { Check, Smartphone, Clock, RefreshCw, Search } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useSubscription } from '@/hooks/useSubscription';
+import SubscriptionButton from './SubscriptionButton';
 
 const Pricing = () => {
+  const { user } = useAuth();
+  const { subscribed } = useSubscription();
+
   const features = [
     {
       icon: <Search className="w-5 h-5 text-green-500" />,
@@ -34,11 +40,15 @@ const Pricing = () => {
         </div>
 
         <div className="max-w-md mx-auto">
-          <div className="bg-white border-2 border-blue-200 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow relative">
-            {/* Popular badge */}
+          <div className={`bg-white border-2 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow relative ${
+            user && subscribed ? 'border-green-200' : 'border-blue-200'
+          }`}>
+            {/* Badge */}
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-              <span className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold">
-                Mest populära
+              <span className={`text-white px-4 py-2 rounded-full text-sm font-semibold ${
+                user && subscribed ? 'bg-green-600' : 'bg-blue-600'
+              }`}>
+                {user && subscribed ? 'Din nuvarande plan' : 'Mest populära'}
               </span>
             </div>
 
@@ -64,9 +74,20 @@ const Pricing = () => {
               ))}
             </div>
 
-            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg text-lg font-semibold transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all">
-              Kom igång nu - 300kr
-            </button>
+            {user && subscribed ? (
+              <div className="w-full bg-green-600 text-white py-4 rounded-lg text-lg font-semibold text-center">
+                ✓ Aktiv prenumeration
+              </div>
+            ) : user ? (
+              <SubscriptionButton />
+            ) : (
+              <a 
+                href="/auth"
+                className="block w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg text-lg font-semibold transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all text-center"
+              >
+                Kom igång nu - 300kr
+              </a>
+            )}
 
             <div className="text-center mt-6 text-sm text-gray-500">
               <div className="flex items-center justify-center space-x-2 mb-2">

@@ -98,6 +98,48 @@ export type Database = {
           },
         ]
       }
+      subscriptions: {
+        Row: {
+          amount_paid: number | null
+          created_at: string
+          currency: string | null
+          id: string
+          status: string | null
+          stripe_customer_id: string | null
+          stripe_payment_intent_id: string | null
+          subscription_expires: string | null
+          subscription_start: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          amount_paid?: number | null
+          created_at?: string
+          currency?: string | null
+          id?: string
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_intent_id?: string | null
+          subscription_expires?: string | null
+          subscription_start?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          amount_paid?: number | null
+          created_at?: string
+          currency?: string | null
+          id?: string
+          status?: string | null
+          stripe_customer_id?: string | null
+          stripe_payment_intent_id?: string | null
+          subscription_expires?: string | null
+          subscription_start?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

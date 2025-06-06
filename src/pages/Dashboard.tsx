@@ -1,13 +1,16 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, LogOut, Plus, Eye, EyeOff, Shield } from 'lucide-react';
 import { maskPersonnummer, logSecurityEvent } from '@/utils/security';
+import { useSubscription } from '@/hooks/useSubscription';
+import SubscriptionStatus from '@/components/SubscriptionStatus';
+import SubscriptionButton from '@/components/SubscriptionButton';
 
 interface BookingConfig {
   id: string;
@@ -24,9 +27,11 @@ const Dashboard = () => {
   const { user, signOut, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [configs, setConfigs] = useState<BookingConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSensitiveData, setShowSensitiveData] = useState<Record<string, boolean>>({});
+  const { subscribed, refreshSubscription } = useSubscription();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -39,8 +44,26 @@ const Dashboard = () => {
     if (user) {
       logSecurityEvent('DASHBOARD_ACCESS', { userId: user.id });
       fetchBookingConfigs();
+      
+      // Check for payment success/cancellation
+      if (searchParams.get('success') === 'true') {
+        toast({
+          title: "Betalning genomförd!",
+          description: "Din prenumeration är nu aktiv. Det kan ta en minut innan statusen uppdateras.",
+        });
+        // Refresh subscription status after successful payment
+        setTimeout(() => {
+          refreshSubscription();
+        }, 2000);
+      } else if (searchParams.get('canceled') === 'true') {
+        toast({
+          title: "Betalning avbruten",
+          description: "Din betalning avbröts. Du kan försöka igen när som helst.",
+          variant: "destructive",
+        });
+      }
     }
-  }, [user]);
+  }, [user, searchParams, toast, refreshSubscription]);
 
   const fetchBookingConfigs = async () => {
     try {
@@ -128,27 +151,53 @@ const Dashboard = () => {
           <p className="text-gray-600">
             Hantera dina automatiska bokningar av körkortsprov
           </p>
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-start space-x-3">
-              <Shield className="h-5 w-5 text-blue-600 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-medium text-blue-900">Datasäkerhet</h3>
-                <p className="text-sm text-blue-700 mt-1">
-                  Dina personnummer är maskerade för säkerhet. Klicka på ögon-ikonen för att visa fullständig information när det behövs.
-                </p>
-              </div>
+        </div>
+
+        {/* Subscription Status Section */}
+        <div className="mb-8">
+          <SubscriptionStatus />
+          {!subscribed && (
+            <div className="mt-4">
+              <SubscriptionButton />
+            </div>
+          )}
+        </div>
+
+        {/* Security Notice */}
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start space-x-3">
+            <Shield className="h-5 w-5 text-blue-600 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-medium text-blue-900">Datasäkerhet</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Dina personnummer är maskerade för säkerhet. Klicka på ögon-ikonen för att visa fullständig information när det behövs.
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="mb-6">
-          <Button onClick={() => navigate('/dashboard/new-config')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Ny bokningskonfiguration
-          </Button>
-        </div>
+        {subscribed && (
+          <div className="mb-6">
+            <Button onClick={() => navigate('/dashboard/new-config')}>
+              <Plus className="h-4 w-4 mr-2" />
+              Ny bokningskonfiguration
+            </Button>
+          </div>
+        )}
 
-        {configs.length === 0 ? (
+        {!subscribed ? (
+          <Card>
+            <CardContent className="text-center py-12">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Uppgradera till Premium
+              </h3>
+              <p className="text-gray-600 mb-4">
+                För att skapa bokningskonfigurationer och använda automatisk bokning behöver du en aktiv prenumeration.
+              </p>
+              <SubscriptionButton />
+            </CardContent>
+          </Card>
+        ) : configs.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
