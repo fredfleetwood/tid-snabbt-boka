@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
@@ -90,11 +91,11 @@ serve(async (req) => {
       }
     };
 
-    // Trigger the advanced automation job
+    // Trigger the advanced automation job using the correct secret key name
     const triggerResponse = await fetch('https://api.trigger.dev/v3/runs', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('TRIGGER_DEV_API_KEY')}`,
+        'Authorization': `Bearer ${Deno.env.get('TRIGGER_SECRET_KEY')}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
