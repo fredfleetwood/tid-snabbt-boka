@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -9,6 +8,7 @@ import { logSecurityEvent } from '@/utils/security';
 import { useSubscription } from '@/hooks/useSubscription';
 import DashboardHeader from '@/components/DashboardHeader';
 import SubscriptionCard from '@/components/SubscriptionCard';
+import BookingConfigForm from '@/components/BookingConfigForm';
 import UserSettingsCard from '@/components/UserSettingsCard';
 
 interface BookingConfig {
@@ -107,7 +107,7 @@ const Dashboard = () => {
       <DashboardHeader />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
         <SubscriptionCard />
-        <UserSettingsCard configs={configs} />
+        <BookingConfigForm />
       </div>
     </div>
   );
