@@ -1,5 +1,5 @@
 
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { chromium, Browser, Page } from "playwright";
 
 interface BookingPayload {
