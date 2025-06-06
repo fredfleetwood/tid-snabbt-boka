@@ -145,7 +145,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      validate_personnummer: {
+        Args: { personnummer: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
