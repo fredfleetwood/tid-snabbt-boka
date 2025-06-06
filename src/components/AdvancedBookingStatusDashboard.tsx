@@ -203,32 +203,92 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       return;
     }
 
+    if (!user) {
+      toast({
+        title: "Inloggning krävs",
+        description: "Du måste vara inloggad för att starta automatisering",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsStarting(true);
     setLogs([]);
     setCycleCount(0);
     setSlotsFound(0);
     setShowQRCode(false);
 
+    console.log('🚀 Starting advanced booking automation...');
+    console.log('User:', user.id);
+    console.log('Config ID:', configId);
+
     try {
+      // Get the current session to ensure we have proper authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('❌ Session error:', sessionError);
+        throw new Error('Authentication session expired. Please refresh and try again.');
+      }
+
+      console.log('✅ Authentication session valid');
+      console.log('Access token present:', !!session.access_token);
+
+      const payload = { config_id: configId };
+      console.log('📤 Sending payload:', payload);
+
       const { data, error } = await supabase.functions.invoke('start-booking', {
-        body: { config_id: configId }
+        body: payload,
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
       });
 
-      if (error) throw error;
+      console.log('📥 Function response data:', data);
+      console.log('📥 Function response error:', error);
 
-      if (data.success) {
+      if (error) {
+        console.error('❌ Supabase function error:', error);
+        throw new Error(error.message || 'Failed to start automation');
+      }
+
+      if (data?.error) {
+        console.error('❌ Function returned error:', data.error);
+        console.log('🔍 Debug info:', data.debug);
+        throw new Error(data.error);
+      }
+
+      if (data?.success) {
+        console.log('✅ Advanced automation started successfully');
         toast({
           title: "🚀 Avancerad automatisering startad",
           description: "Automatisk bokning med avancerade funktioner har startats.",
         });
       } else {
-        throw new Error(data.error || 'Failed to start advanced booking');
+        console.error('❌ Unexpected response format:', data);
+        throw new Error('Unexpected response from server');
       }
     } catch (error) {
-      console.error('Error starting advanced booking:', error);
+      console.error('💥 Error starting advanced booking:', error);
+      
+      let errorMessage = 'Ett oväntat fel inträffade';
+      
+      if (error.message?.includes('Authentication')) {
+        errorMessage = 'Autentiseringsfel. Vänligen logga in igen.';
+      } else if (error.message?.includes('booking configuration')) {
+        errorMessage = 'Ingen bokningskonfiguration hittades. Skapa en först.';
+      } else if (error.message?.includes('subscription')) {
+        errorMessage = 'Prenumerationsproblem. Kontrollera din prenumeration.';
+      } else if (error.message?.includes('Trigger.dev')) {
+        errorMessage = 'Automatiseringstjänsten är inte tillgänglig just nu.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       toast({
         title: "Kunde inte starta automatisering",
-        description: error.message || "Ett oväntat fel inträffade",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {

@@ -14,6 +14,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('=== START BOOKING FUNCTION CALLED ===');
+    
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -21,48 +23,105 @@ serve(async (req) => {
 
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
+    console.log('Auth header present:', !!authHeader);
+    console.log('Auth header value (first 20 chars):', authHeader ? authHeader.substring(0, 20) + '...' : 'NONE');
+    
     if (!authHeader) {
-      console.error('No authorization header provided');
-      throw new Error('No authorization header');
+      console.error('❌ No authorization header provided');
+      return new Response(JSON.stringify({ 
+        error: 'No authorization header provided' 
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Get user from JWT
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
+    const token = authHeader.replace('Bearer ', '');
+    console.log('Token extracted (first 20 chars):', token.substring(0, 20) + '...');
+    
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+
+    console.log('Auth result - User:', user ? `${user.id} (${user.email})` : 'NULL');
+    console.log('Auth result - Error:', authError);
 
     if (authError || !user) {
-      console.error('Authentication failed:', authError);
-      throw new Error('Authentication failed');
+      console.error('❌ Authentication failed:', authError);
+      return new Response(JSON.stringify({ 
+        error: 'Authentication failed: ' + (authError?.message || 'Unknown auth error')
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log('User authenticated:', user.id);
+    console.log('✅ User authenticated:', user.id, user.email);
 
-    const { config_id } = await req.json();
+    // Parse request body safely
+    let requestBody;
+    try {
+      const bodyText = await req.text();
+      console.log('Request body text:', bodyText);
+      requestBody = bodyText ? JSON.parse(bodyText) : {};
+    } catch (parseError) {
+      console.error('❌ Failed to parse request body:', parseError);
+      return new Response(JSON.stringify({ 
+        error: 'Invalid JSON in request body' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { config_id } = requestBody;
     console.log('Requested config_id:', config_id);
 
-    // Get the booking config - first let's see what configs exist for this user
+    // Get ALL booking configs for this user first for debugging
+    console.log('🔍 Fetching all configs for user...');
     const { data: allConfigs, error: allConfigsError } = await supabaseClient
       .from('booking_configs')
       .select('*')
       .eq('user_id', user.id);
 
-    console.log('All configs for user:', allConfigs);
-    console.log('All configs error:', allConfigsError);
+    console.log('All configs query result:');
+    console.log('- Data:', allConfigs);
+    console.log('- Error:', allConfigsError);
+    console.log('- Count:', allConfigs?.length || 0);
+
+    if (allConfigsError) {
+      console.error('❌ Database error fetching configs:', allConfigsError);
+      return new Response(JSON.stringify({ 
+        error: 'Database error: ' + allConfigsError.message 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // If no config_id provided, use the first available config
     let targetConfigId = config_id;
     if (!targetConfigId && allConfigs && allConfigs.length > 0) {
       targetConfigId = allConfigs[0].id;
-      console.log('Using first available config:', targetConfigId);
+      console.log('✅ Using first available config:', targetConfigId);
     }
 
     if (!targetConfigId) {
-      console.error('No config ID available');
-      throw new Error('No booking configuration found. Please create a booking configuration first.');
+      console.error('❌ No config ID available');
+      return new Response(JSON.stringify({ 
+        error: 'No booking configuration found. Please create a booking configuration first.',
+        debug: {
+          userId: user.id,
+          configsFound: allConfigs?.length || 0,
+          requestedConfigId: config_id
+        }
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Get the specific booking config
+    console.log('🔍 Fetching specific config:', targetConfigId);
     const { data: config, error: configError } = await supabaseClient
       .from('booking_configs')
       .select('*')
@@ -70,15 +129,31 @@ serve(async (req) => {
       .eq('user_id', user.id)
       .single();
 
+    console.log('Specific config query result:');
+    console.log('- Data:', config);
+    console.log('- Error:', configError);
+
     if (configError || !config) {
-      console.error('Config fetch error:', configError);
-      console.error('Config not found for ID:', targetConfigId);
-      throw new Error('Booking config not found');
+      console.error('❌ Config fetch error:', configError);
+      console.error('❌ Config not found for ID:', targetConfigId);
+      return new Response(JSON.stringify({ 
+        error: 'Booking config not found for ID: ' + targetConfigId,
+        debug: {
+          configError: configError,
+          targetConfigId,
+          userId: user.id,
+          allConfigIds: allConfigs?.map(c => c.id) || []
+        }
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log('Config found:', config.id);
+    console.log('✅ Config found:', config.id);
 
     // Create a booking session with advanced tracking
+    console.log('🔍 Creating booking session...');
     const { data: session, error: sessionError } = await supabaseClient
       .from('booking_sessions')
       .insert({
@@ -97,12 +172,21 @@ serve(async (req) => {
       .select()
       .single();
 
+    console.log('Session creation result:');
+    console.log('- Data:', session);
+    console.log('- Error:', sessionError);
+
     if (sessionError || !session) {
-      console.error('Session creation error:', sessionError);
-      throw new Error('Failed to create booking session');
+      console.error('❌ Session creation error:', sessionError);
+      return new Response(JSON.stringify({ 
+        error: 'Failed to create booking session: ' + (sessionError?.message || 'Unknown error')
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log('Session created:', session.id);
+    console.log('✅ Session created:', session.id);
 
     // Enhanced Trigger.dev job payload
     const advancedPayload = {
@@ -126,12 +210,20 @@ serve(async (req) => {
 
     // Check if Trigger Secret Key is available
     const triggerSecretKey = Deno.env.get('TRIGGER_SECRET_KEY');
+    console.log('Trigger secret key available:', !!triggerSecretKey);
+    
     if (!triggerSecretKey) {
-      console.error('TRIGGER_SECRET_KEY not found in environment');
-      throw new Error('Trigger.dev API key not configured');
+      console.error('❌ TRIGGER_SECRET_KEY not found in environment');
+      return new Response(JSON.stringify({ 
+        error: 'Trigger.dev API key not configured. Please contact support.' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log('Triggering automation job...');
+    console.log('🚀 Triggering automation job...');
+    console.log('Payload:', JSON.stringify(advancedPayload, null, 2));
 
     // Trigger the advanced automation job using the correct secret key name
     const triggerResponse = await fetch('https://api.trigger.dev/v3/runs', {
@@ -147,30 +239,43 @@ serve(async (req) => {
     });
 
     console.log('Trigger response status:', triggerResponse.status);
+    console.log('Trigger response ok:', triggerResponse.ok);
 
     if (!triggerResponse.ok) {
       const errorText = await triggerResponse.text();
-      console.error('Trigger.dev error:', errorText);
+      console.error('❌ Trigger.dev error response:', errorText);
+      console.error('❌ Trigger.dev status:', triggerResponse.status);
       
       // Update session with error
       await supabaseClient
         .from('booking_sessions')
         .update({
           status: 'error',
-          error_message: 'Failed to start advanced automation',
+          error_message: 'Failed to start advanced automation: ' + errorText,
           booking_details: {
             stage: 'error',
             message: '❌ Fel vid start av avancerad automatisering',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            triggerError: errorText,
+            triggerStatus: triggerResponse.status
           }
         })
         .eq('id', session.id);
 
-      throw new Error('Failed to trigger advanced automation');
+      return new Response(JSON.stringify({ 
+        error: 'Failed to trigger advanced automation: ' + errorText,
+        debug: {
+          triggerStatus: triggerResponse.status,
+          triggerResponse: errorText
+        }
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const triggerData = await triggerResponse.json();
-    console.log('Trigger response data:', triggerData);
+    console.log('✅ Trigger response data:', triggerData);
 
     // Update session with advanced tracking
     await supabaseClient
@@ -188,7 +293,7 @@ serve(async (req) => {
       })
       .eq('id', session.id);
 
-    console.log('Advanced booking automation started:', {
+    console.log('✅ Advanced booking automation started successfully:', {
       sessionId: session.id,
       triggerRunId: triggerData.id,
       automationType: 'advanced'
@@ -198,14 +303,29 @@ serve(async (req) => {
       success: true, 
       session_id: session.id,
       trigger_run_id: triggerData.id,
-      automation_type: 'advanced'
+      automation_type: 'advanced',
+      debug: {
+        userId: user.id,
+        configId: targetConfigId,
+        message: 'Advanced automation started successfully'
+      }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+    
   } catch (error) {
-    console.error('Error in start-booking function:', error);
+    console.error('💥 CRITICAL ERROR in start-booking function:', error);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    
     return new Response(JSON.stringify({ 
-      error: error.message || 'An unexpected error occurred' 
+      error: error.message || 'An unexpected error occurred',
+      debug: {
+        errorName: error.name,
+        errorStack: error.stack?.split('\n').slice(0, 5), // First 5 lines of stack
+        timestamp: new Date().toISOString()
+      }
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
