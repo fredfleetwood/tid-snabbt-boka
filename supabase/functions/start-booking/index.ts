@@ -48,7 +48,7 @@ serve(async (req) => {
       throw new Error('Booking config not found');
     }
 
-    // Create a booking session
+    // Create a booking session with advanced tracking
     const { data: session, error: sessionError } = await supabaseClient
       .from('booking_sessions')
       .insert({
@@ -57,8 +57,11 @@ serve(async (req) => {
         status: 'initializing',
         booking_details: {
           stage: 'starting',
-          message: 'Startar automatisk bokning...',
-          timestamp: new Date().toISOString()
+          message: '🚀 Startar automatisering...',
+          timestamp: new Date().toISOString(),
+          cycle_count: 0,
+          slots_found: 0,
+          current_operation: 'initialization'
         }
       })
       .select()
@@ -68,7 +71,28 @@ serve(async (req) => {
       throw new Error('Failed to create booking session');
     }
 
-    // Trigger the Trigger.dev job
+    // Enhanced Trigger.dev job payload
+    const advancedPayload = {
+      user_id: user.id,
+      session_id: session.id,
+      config: {
+        personnummer: config.personnummer,
+        license_type: config.license_type,
+        exam: config.exam,
+        vehicle_language: config.vehicle_language,
+        date_ranges: config.date_ranges,
+        locations: config.locations
+      },
+      automation_settings: {
+        max_cycles: 100,
+        cycle_delay: 10000, // 10 seconds between cycles
+        refresh_interval: 30, // Refresh every 30 cycles
+        timeout: 1800000, // 30 minutes total timeout
+        retry_attempts: 3
+      }
+    };
+
+    // Trigger the advanced automation job
     const triggerResponse = await fetch('https://api.trigger.dev/v3/runs', {
       method: 'POST',
       headers: {
@@ -76,19 +100,8 @@ serve(async (req) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        taskIdentifier: 'trafikverket-booking',
-        payload: {
-          user_id: user.id,
-          session_id: session.id,
-          config: {
-            personnummer: config.personnummer,
-            license_type: config.license_type,
-            exam: config.exam,
-            vehicle_language: config.vehicle_language,
-            date_ranges: config.date_ranges,
-            locations: config.locations
-          }
-        }
+        taskIdentifier: 'trafikverket-booking-advanced',
+        payload: advancedPayload
       })
     });
 
@@ -101,43 +114,47 @@ serve(async (req) => {
         .from('booking_sessions')
         .update({
           status: 'error',
-          error_message: 'Failed to start automation',
+          error_message: 'Failed to start advanced automation',
           booking_details: {
             stage: 'error',
-            message: 'Fel vid start av automatisk bokning',
+            message: '❌ Fel vid start av avancerad automatisering',
             timestamp: new Date().toISOString()
           }
         })
         .eq('id', session.id);
 
-      throw new Error('Failed to trigger automation');
+      throw new Error('Failed to trigger advanced automation');
     }
 
     const triggerData = await triggerResponse.json();
 
-    // Update session with trigger run ID
+    // Update session with advanced tracking
     await supabaseClient
       .from('booking_sessions')
       .update({
+        status: 'browser_starting',
         booking_details: {
           ...session.booking_details,
           trigger_run_id: triggerData.id,
-          stage: 'triggered',
-          message: '🚀 Startar webbläsare...',
-          timestamp: new Date().toISOString()
+          stage: 'browser_starting',
+          message: '🌍 Startar webbläsare (WebKit)...',
+          timestamp: new Date().toISOString(),
+          automation_type: 'advanced'
         }
       })
       .eq('id', session.id);
 
-    console.log('Booking automation started:', {
+    console.log('Advanced booking automation started:', {
       sessionId: session.id,
-      triggerRunId: triggerData.id
+      triggerRunId: triggerData.id,
+      automationType: 'advanced'
     });
 
     return new Response(JSON.stringify({ 
       success: true, 
       session_id: session.id,
-      trigger_run_id: triggerData.id
+      trigger_run_id: triggerData.id,
+      automation_type: 'advanced'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

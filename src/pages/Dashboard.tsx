@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -9,7 +10,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import DashboardHeader from '@/components/DashboardHeader';
 import SubscriptionCard from '@/components/SubscriptionCard';
 import BookingConfigForm from '@/components/BookingConfigForm';
-import UserSettingsCard from '@/components/UserSettingsCard';
+import AdvancedBookingStatusDashboard from '@/components/AdvancedBookingStatusDashboard';
 
 interface BookingConfig {
   id: string;
@@ -29,6 +30,7 @@ const Dashboard = () => {
   const [searchParams] = useSearchParams();
   const [configs, setConfigs] = useState<BookingConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
   const { refreshSubscription } = useSubscription();
 
   useEffect(() => {
@@ -49,7 +51,6 @@ const Dashboard = () => {
           title: "Betalning genomförd!",
           description: "Din prenumeration är nu aktiv. Det kan ta en minut innan statusen uppdateras.",
         });
-        // Refresh subscription status after successful payment
         setTimeout(() => {
           refreshSubscription();
         }, 2000);
@@ -80,6 +81,10 @@ const Dashboard = () => {
         });
       } else {
         setConfigs(data || []);
+        // Set the first config as active for the advanced dashboard
+        if (data && data.length > 0) {
+          setActiveConfigId(data[0].id);
+        }
         logSecurityEvent('DATA_FETCH_SUCCESS', { configCount: data?.length || 0 });
       }
     } catch (error) {
@@ -107,6 +112,17 @@ const Dashboard = () => {
       <DashboardHeader />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
         <SubscriptionCard />
+        
+        {/* Show Advanced Booking Dashboard if user has configs */}
+        {activeConfigId && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              Avancerad automatisering
+            </h2>
+            <AdvancedBookingStatusDashboard configId={activeConfigId} />
+          </div>
+        )}
+        
         <BookingConfigForm />
       </div>
     </div>
