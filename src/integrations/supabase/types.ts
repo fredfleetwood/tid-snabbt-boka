@@ -9,7 +9,95 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      booking_configs: {
+        Row: {
+          created_at: string
+          date_ranges: Json
+          exam: string
+          id: string
+          is_active: boolean
+          license_type: string
+          locations: string[]
+          personnummer: string
+          updated_at: string
+          user_id: string
+          vehicle_language: string[]
+        }
+        Insert: {
+          created_at?: string
+          date_ranges?: Json
+          exam?: string
+          id?: string
+          is_active?: boolean
+          license_type?: string
+          locations?: string[]
+          personnummer: string
+          updated_at?: string
+          user_id: string
+          vehicle_language?: string[]
+        }
+        Update: {
+          created_at?: string
+          date_ranges?: Json
+          exam?: string
+          id?: string
+          is_active?: boolean
+          license_type?: string
+          locations?: string[]
+          personnummer?: string
+          updated_at?: string
+          user_id?: string
+          vehicle_language?: string[]
+        }
+        Relationships: []
+      }
+      booking_sessions: {
+        Row: {
+          booking_details: Json
+          completed_at: string | null
+          config_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          booking_details?: Json
+          completed_at?: string | null
+          config_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          booking_details?: Json
+          completed_at?: string | null
+          config_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_sessions_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "booking_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

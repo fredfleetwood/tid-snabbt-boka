@@ -1,5 +1,12 @@
 
+import { useAuth } from '@/contexts/AuthContext';
+
 const Hero = () => {
+  const { user } = useAuth();
+
+  const getStartedLink = user ? '/dashboard' : '/auth';
+  const getStartedText = user ? 'Till min sida' : 'Kom igång nu - 300kr';
+
   return (
     <section className="bg-gradient-to-br from-blue-50 to-white py-16 lg:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -24,10 +31,10 @@ const Hero = () => {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <a 
-              href="#pricing" 
+              href={getStartedLink} 
               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all"
             >
-              Kom igång nu - 300kr
+              {getStartedText}
             </a>
             <a 
               href="#how-it-works" 
