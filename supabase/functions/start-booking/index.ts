@@ -22,6 +22,7 @@ serve(async (req) => {
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      console.error('No authorization header provided');
       throw new Error('No authorization header');
     }
 
@@ -31,29 +32,58 @@ serve(async (req) => {
     );
 
     if (authError || !user) {
+      console.error('Authentication failed:', authError);
       throw new Error('Authentication failed');
     }
 
-    const { config_id } = await req.json();
+    console.log('User authenticated:', user.id);
 
-    // Get the booking config
+    const { config_id } = await req.json();
+    console.log('Requested config_id:', config_id);
+
+    // Get the booking config - first let's see what configs exist for this user
+    const { data: allConfigs, error: allConfigsError } = await supabaseClient
+      .from('booking_configs')
+      .select('*')
+      .eq('user_id', user.id);
+
+    console.log('All configs for user:', allConfigs);
+    console.log('All configs error:', allConfigsError);
+
+    // If no config_id provided, use the first available config
+    let targetConfigId = config_id;
+    if (!targetConfigId && allConfigs && allConfigs.length > 0) {
+      targetConfigId = allConfigs[0].id;
+      console.log('Using first available config:', targetConfigId);
+    }
+
+    if (!targetConfigId) {
+      console.error('No config ID available');
+      throw new Error('No booking configuration found. Please create a booking configuration first.');
+    }
+
+    // Get the specific booking config
     const { data: config, error: configError } = await supabaseClient
       .from('booking_configs')
       .select('*')
-      .eq('id', config_id)
+      .eq('id', targetConfigId)
       .eq('user_id', user.id)
       .single();
 
     if (configError || !config) {
+      console.error('Config fetch error:', configError);
+      console.error('Config not found for ID:', targetConfigId);
       throw new Error('Booking config not found');
     }
+
+    console.log('Config found:', config.id);
 
     // Create a booking session with advanced tracking
     const { data: session, error: sessionError } = await supabaseClient
       .from('booking_sessions')
       .insert({
         user_id: user.id,
-        config_id: config_id,
+        config_id: targetConfigId,
         status: 'initializing',
         booking_details: {
           stage: 'starting',
@@ -68,8 +98,11 @@ serve(async (req) => {
       .single();
 
     if (sessionError || !session) {
+      console.error('Session creation error:', sessionError);
       throw new Error('Failed to create booking session');
     }
+
+    console.log('Session created:', session.id);
 
     // Enhanced Trigger.dev job payload
     const advancedPayload = {
@@ -91,11 +124,20 @@ serve(async (req) => {
       }
     };
 
+    // Check if Trigger Secret Key is available
+    const triggerSecretKey = Deno.env.get('TRIGGER_SECRET_KEY');
+    if (!triggerSecretKey) {
+      console.error('TRIGGER_SECRET_KEY not found in environment');
+      throw new Error('Trigger.dev API key not configured');
+    }
+
+    console.log('Triggering automation job...');
+
     // Trigger the advanced automation job using the correct secret key name
     const triggerResponse = await fetch('https://api.trigger.dev/v3/runs', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('TRIGGER_SECRET_KEY')}`,
+        'Authorization': `Bearer ${triggerSecretKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -103,6 +145,8 @@ serve(async (req) => {
         payload: advancedPayload
       })
     });
+
+    console.log('Trigger response status:', triggerResponse.status);
 
     if (!triggerResponse.ok) {
       const errorText = await triggerResponse.text();
@@ -126,6 +170,7 @@ serve(async (req) => {
     }
 
     const triggerData = await triggerResponse.json();
+    console.log('Trigger response data:', triggerData);
 
     // Update session with advanced tracking
     await supabaseClient
