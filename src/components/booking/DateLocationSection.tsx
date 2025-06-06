@@ -5,7 +5,7 @@ import { FormField } from '@/components/ui/form';
 import { Calendar } from 'lucide-react';
 import { Control, FieldErrors } from 'react-hook-form';
 import { FormData } from './constants';
-import DateRangePicker from '../DateRangePicker';
+import DateRangePicker, { DateRange } from '../DateRangePicker';
 import LocationSelector from '../LocationSelector';
 
 interface DateLocationSectionProps {
@@ -31,8 +31,8 @@ const DateLocationSection = ({ control, errors }: DateLocationSectionProps) => {
           name="date_ranges"
           render={({ field, fieldState }) => (
             <DateRangePicker
-              value={field.value}
-              onChange={field.onChange}
+              value={field.value || []}
+              onChange={(ranges: DateRange[]) => field.onChange(ranges)}
               error={fieldState.error?.message}
             />
           )}
@@ -43,7 +43,7 @@ const DateLocationSection = ({ control, errors }: DateLocationSectionProps) => {
           name="locations"
           render={({ field, fieldState }) => (
             <LocationSelector
-              value={field.value}
+              value={field.value || []}
               onChange={field.onChange}
               error={fieldState.error?.message}
             />
