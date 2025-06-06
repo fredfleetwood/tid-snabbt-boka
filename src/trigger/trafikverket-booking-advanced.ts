@@ -29,8 +29,8 @@ export const trafikverketBookingAdvanced = task({
     console.log(`Starting advanced booking automation for session ${session_id}`);
     
     // Initialize Supabase client for status updates
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.DATABASE_URL;
+    const supabaseKey = process.env.DATABASE_SERVICE_KEY;
     
     // Mock mode if Supabase is not configured
     const mockMode = !supabaseUrl || !supabaseKey;
