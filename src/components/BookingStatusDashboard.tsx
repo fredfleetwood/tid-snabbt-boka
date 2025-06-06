@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
@@ -179,24 +180,26 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
     if (!session) return;
 
     try {
-      const bookingDetails = getBookingDetails(session.booking_details);
-      const triggerRunId = bookingDetails.trigger_run_id;
-
-      const { data, error } = await supabase.functions.invoke('stop-booking', {
-        body: { 
-          session_id: session.id,
-          trigger_run_id: triggerRunId
-        }
-      });
+      const { error } = await supabase
+        .from('booking_sessions')
+        .update({
+          status: 'cancelled',
+          completed_at: new Date().toISOString(),
+          booking_details: {
+            ...getBookingDetails(session.booking_details),
+            stage: 'cancelled',
+            message: '⏹️ Bokning stoppad av användare',
+            timestamp: new Date().toISOString()
+          }
+        })
+        .eq('id', session.id);
 
       if (error) throw error;
 
-      if (data.success) {
-        toast({
-          title: "Bokning stoppad",
-          description: "Den automatiska bokningen har stoppats.",
-        });
-      }
+      toast({
+        title: "Bokning stoppad",
+        description: "Den automatiska bokningen har stoppats.",
+      });
     } catch (error) {
       console.error('Error stopping booking:', error);
       toast({

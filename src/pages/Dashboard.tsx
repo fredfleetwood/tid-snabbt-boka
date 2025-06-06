@@ -1,19 +1,15 @@
-
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/components/ui/use-toast';
 import { Loader2 } from 'lucide-react';
 import { logSecurityEvent } from '@/utils/security';
 import { useSubscription } from '@/hooks/useSubscription';
-import { useNotifications } from '@/hooks/useNotifications';
 import DashboardHeader from '@/components/DashboardHeader';
 import SubscriptionCard from '@/components/SubscriptionCard';
 import BookingConfigForm from '@/components/BookingConfigForm';
-import NotificationPreferences from '@/components/NotificationPreferences';
 import UserSettingsCard from '@/components/UserSettingsCard';
-import { DashboardSkeleton } from '@/components/LoadingStates';
 
 interface BookingConfig {
   id: string;
@@ -34,7 +30,6 @@ const Dashboard = () => {
   const [configs, setConfigs] = useState<BookingConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const { refreshSubscription } = useSubscription();
-  const { sendWelcomeEmail, sendPaymentConfirmation } = useNotifications();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -54,14 +49,6 @@ const Dashboard = () => {
           title: "Betalning genomförd!",
           description: "Din prenumeration är nu aktiv. Det kan ta en minut innan statusen uppdateras.",
         });
-        
-        // Send payment confirmation email
-        sendPaymentConfirmation(user.email!, {
-          amount: 300,
-          currency: 'SEK',
-          subscriptionPeriod: '1 månad'
-        });
-        
         // Refresh subscription status after successful payment
         setTimeout(() => {
           refreshSubscription();
@@ -73,14 +60,8 @@ const Dashboard = () => {
           variant: "destructive",
         });
       }
-      
-      // Check if this is a new user (first login)
-      const isNewUser = searchParams.get('new_user');
-      if (isNewUser === 'true') {
-        sendWelcomeEmail(user.email!);
-      }
     }
-  }, [user, searchParams, toast, refreshSubscription, sendWelcomeEmail, sendPaymentConfirmation]);
+  }, [user, searchParams, toast, refreshSubscription]);
 
   const fetchBookingConfigs = async () => {
     try {
@@ -111,11 +92,8 @@ const Dashboard = () => {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <DashboardHeader />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
-          <DashboardSkeleton />
-        </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
@@ -129,15 +107,7 @@ const Dashboard = () => {
       <DashboardHeader />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
         <SubscriptionCard />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div>
-            <BookingConfigForm />
-          </div>
-          <div className="space-y-6">
-            <NotificationPreferences />
-            <UserSettingsCard configs={configs} />
-          </div>
-        </div>
+        <BookingConfigForm />
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+
 import { sanitizeInput, isValidPersonnummerFormat, logSecurityEvent } from './security';
 
 /**
@@ -40,8 +41,8 @@ export const validateBookingConfig = (data: any): ValidationResult => {
     sanitizedData.license_type = sanitizeInput(data.license_type);
   }
 
-  // Validate exam type - FIXED: Changed "Teoriprove" to "Kunskapsprov"
-  const validExamTypes = ['Körprov', 'Kunskapsprov'];
+  // Validate exam type
+  const validExamTypes = ['Körprov', 'Teoriprove'];
   if (!data.exam || !validExamTypes.includes(data.exam)) {
     errors.push('Ogiltig provtyp');
   } else {
