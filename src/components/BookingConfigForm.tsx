@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,6 +16,8 @@ import DateRangePicker, { DateRange } from './DateRangePicker';
 import LocationSelector from './LocationSelector';
 import ConfigurationSummary from './ConfigurationSummary';
 import { Car, FileCheck, Calendar, MapPin, Save, Play, Eye } from 'lucide-react';
+
+// ... keep existing code (licenseTypes, vehicleOptions, languageOptions constants)
 
 const licenseTypes = [
   { value: 'A', label: 'A - Motorcykel' },
@@ -68,6 +69,24 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+// Helper function to safely convert potential date range data to DateRange[]
+const safeParseDateRanges = (dateRanges: any[]): DateRange[] => {
+  if (!Array.isArray(dateRanges)) return [];
+  
+  return dateRanges
+    .map((range: any) => {
+      const from = range.from ? new Date(range.from) : null;
+      const to = range.to ? new Date(range.to) : null;
+      
+      // Only include ranges where both dates are valid
+      if (from && to && !isNaN(from.getTime()) && !isNaN(to.getTime())) {
+        return { from, to };
+      }
+      return null;
+    })
+    .filter((range): range is DateRange => range !== null);
+};
+
 const BookingConfigForm = () => {
   const { user } = useAuth();
   const { subscribed } = useSubscription();
@@ -115,10 +134,8 @@ const BookingConfigForm = () => {
       try {
         const parsedDraft = JSON.parse(draft);
         if (parsedDraft.date_ranges) {
-          parsedDraft.date_ranges = parsedDraft.date_ranges.map((range: any) => ({
-            from: new Date(range.from),
-            to: new Date(range.to)
-          }));
+          // Use the helper function to safely parse date ranges
+          parsedDraft.date_ranges = safeParseDateRanges(parsedDraft.date_ranges);
         }
         form.reset(parsedDraft);
       } catch (error) {
@@ -155,10 +172,8 @@ const BookingConfigForm = () => {
   };
 
   const populateFormFromConfig = (config: any) => {
-    const dateRanges = config.date_ranges.map((range: any) => ({
-      from: new Date(range.from),
-      to: new Date(range.to)
-    }));
+    // Use the helper function to safely parse date ranges
+    const dateRanges = safeParseDateRanges(config.date_ranges || []);
 
     form.reset({
       personnummer: config.personnummer,
