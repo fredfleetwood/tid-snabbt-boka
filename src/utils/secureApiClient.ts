@@ -127,28 +127,40 @@ export const secureApiClient = new SecureApiClient();
 export const useSecureBookingConfigs = () => {
   const fetchConfigs = async () => {
     return secureApiClient.secureQuery(
-      () => supabase.from('booking_configs').select('*').order('created_at', { ascending: false }),
+      async () => {
+        const result = await supabase.from('booking_configs').select('*').order('created_at', { ascending: false });
+        return result;
+      },
       { table: 'booking_configs', operation: 'SELECT' }
     );
   };
 
   const createConfig = async (config: any) => {
     return secureApiClient.secureQuery(
-      () => supabase.from('booking_configs').insert(config).select().single(),
+      async () => {
+        const result = await supabase.from('booking_configs').insert(config).select().single();
+        return result;
+      },
       { table: 'booking_configs', operation: 'INSERT' }
     );
   };
 
   const updateConfig = async (id: string, updates: any) => {
     return secureApiClient.secureQuery(
-      () => supabase.from('booking_configs').update(updates).eq('id', id).select().single(),
+      async () => {
+        const result = await supabase.from('booking_configs').update(updates).eq('id', id).select().single();
+        return result;
+      },
       { table: 'booking_configs', operation: 'UPDATE' }
     );
   };
 
   const deleteConfig = async (id: string) => {
     return secureApiClient.secureQuery(
-      () => supabase.from('booking_configs').delete().eq('id', id),
+      async () => {
+        const result = await supabase.from('booking_configs').delete().eq('id', id);
+        return result;
+      },
       { table: 'booking_configs', operation: 'DELETE' }
     );
   };
@@ -158,13 +170,15 @@ export const useSecureBookingConfigs = () => {
 
 export const useSecureBookingSessions = () => {
   const fetchSessions = async (configId?: string) => {
-    const query = supabase.from('booking_sessions').select('*');
-    if (configId) {
-      query.eq('config_id', configId);
-    }
-    
     return secureApiClient.secureQuery(
-      () => query.order('created_at', { ascending: false }),
+      async () => {
+        const query = supabase.from('booking_sessions').select('*');
+        if (configId) {
+          query.eq('config_id', configId);
+        }
+        const result = await query.order('created_at', { ascending: false });
+        return result;
+      },
       { table: 'booking_sessions', operation: 'SELECT' }
     );
   };
