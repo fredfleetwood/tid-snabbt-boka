@@ -125,6 +125,39 @@ export type Database = {
           },
         ]
       }
+      notification_log: {
+        Row: {
+          created_at: string
+          email_address: string
+          id: string
+          sent_at: string
+          status: string
+          subject: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_address: string
+          id?: string
+          sent_at?: string
+          status?: string
+          subject?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_address?: string
+          id?: string
+          sent_at?: string
+          status?: string
+          subject?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           amount_paid: number | null
@@ -164,6 +197,42 @@ export type Database = {
           subscription_start?: string | null
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_preferences: {
+        Row: {
+          booking_updates: boolean
+          browser_notifications: boolean
+          created_at: string
+          email_notifications: boolean
+          id: string
+          marketing_emails: boolean
+          payment_notifications: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          booking_updates?: boolean
+          browser_notifications?: boolean
+          created_at?: string
+          email_notifications?: boolean
+          id?: string
+          marketing_emails?: boolean
+          payment_notifications?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          booking_updates?: boolean
+          browser_notifications?: boolean
+          created_at?: string
+          email_notifications?: boolean
+          id?: string
+          marketing_emails?: boolean
+          payment_notifications?: boolean
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

@@ -11,7 +11,7 @@ const NotificationToast = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Subscribe to real-time notifications
+    // Subscribe to real-time notifications using the correct table name
     const channel = supabase
       .channel('user-notifications')
       .on(

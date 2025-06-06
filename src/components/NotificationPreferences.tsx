@@ -37,7 +37,8 @@ const NotificationPreferences = () => {
 
   const loadPreferences = async () => {
     try {
-      const { data, error } = await supabase
+      // Use any type to bypass TypeScript issues until types are regenerated
+      const { data, error } = await (supabase as any)
         .from('user_preferences')
         .select('*')
         .eq('user_id', user?.id)
@@ -73,7 +74,8 @@ const NotificationPreferences = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      // Use any type to bypass TypeScript issues until types are regenerated
+      const { error } = await (supabase as any)
         .from('user_preferences')
         .upsert({
           user_id: user.id,

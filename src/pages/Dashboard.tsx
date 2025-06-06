@@ -135,7 +135,7 @@ const Dashboard = () => {
           </div>
           <div className="space-y-6">
             <NotificationPreferences />
-            <UserSettingsCard />
+            <UserSettingsCard configs={configs} />
           </div>
         </div>
       </div>
