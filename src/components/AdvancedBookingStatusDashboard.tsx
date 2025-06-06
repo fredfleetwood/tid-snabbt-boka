@@ -237,7 +237,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       // Get current session for authentication
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      if (sessionError || !session) {
+      if (sessionError || !session?.access_token) {
         console.error('❌ Auth session error:', sessionError);
         throw new Error('Authentication session expired. Please refresh and try again.');
       }
@@ -245,20 +245,31 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       console.log('✅ Authentication session valid');
       console.log('📤 Calling start-booking with config_id:', configId);
 
-      const { data, error } = await supabase.functions.invoke('start-booking', {
-        body: { config_id: configId },
+      // Call Edge Function with explicit data
+      const response = await fetch(`https://kqemgnbqjrqepzkigfcx.supabase.co/functions/v1/start-booking`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxZW1nbmJxanJxZXB6a2lnZmN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyMTQ4MDEsImV4cCI6MjA2NDc5MDgwMX0.tnPomyWLMseJX0GlrUeO63Ig9GRZSTh1O1Fi2p9q8mc'
+        },
+        body: JSON.stringify({ 
+          config_id: configId,
+          user_id: user.id
+        })
       });
 
-      console.log('📥 Function response:', { data, error });
+      console.log('📥 Function response status:', response.status);
+      console.log('📥 Function response ok:', response.ok);
 
-      if (error) {
-        console.error('❌ Supabase function error:', error);
-        throw new Error(error.message || 'Failed to start automation');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Function error response:', errorText);
+        throw new Error(`Edge Function error (${response.status}): ${errorText}`);
       }
+
+      const data = await response.json();
+      console.log('📥 Function response data:', data);
 
       if (data?.error) {
         console.error('❌ Function returned error:', data.error);
