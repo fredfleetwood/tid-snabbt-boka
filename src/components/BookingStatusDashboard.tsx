@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +10,7 @@ import LiveUpdatesLog from './booking/LiveUpdatesLog';
 import BookingStatusHeader from './booking/BookingStatusHeader';
 import BookingStatusDisplay from './booking/BookingStatusDisplay';
 import BookingControls from './booking/BookingControls';
+import BookingTestControls from './booking/BookingTestControls';
 import { BookingSession, BookingDetails, LogEntry } from './booking/types';
 import { getBookingDetails } from './booking/utils';
 
