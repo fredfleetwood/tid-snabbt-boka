@@ -32,11 +32,19 @@ export const trafikverketBookingAdvanced = task({
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing Supabase configuration');
+    // Mock mode if Supabase is not configured
+    const mockMode = !supabaseUrl || !supabaseKey;
+    
+    if (mockMode) {
+      console.log('⚠️ Running in MOCK MODE - Supabase not configured');
     }
 
     const updateSessionStatus = async (status: string, details: any) => {
+      if (mockMode) {
+        console.log(`[MOCK] Status: ${status}`, details);
+        return;
+      }
+      
       try {
         const response = await fetch(`${supabaseUrl}/rest/v1/booking_sessions?id=eq.${session_id}`, {
           method: 'PATCH',
