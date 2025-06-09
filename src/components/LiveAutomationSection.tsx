@@ -14,7 +14,8 @@ import {
   BarChart3,
   AlertTriangle,
   CheckCircle,
-  XCircle
+  XCircle,
+  Loader2
 } from 'lucide-react';
 import { vpsService } from '@/services/vpsService';
 import { VPSSystemHealth } from '@/services/types/vpsTypes';
