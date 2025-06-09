@@ -32,17 +32,14 @@ interface StatusConfig {
 }
 
 const statusConfigs: Record<string, StatusConfig> = {
-  starting: { emoji: '🚀', text: 'Initializing automation...', progress: 5, color: 'bg-blue-500' },
-  navigating: { emoji: '🌐', text: 'Loading Trafikverket website...', progress: 15, color: 'bg-blue-600' },
-  login: { emoji: '🔐', text: 'Starting login process...', progress: 25, color: 'bg-yellow-500' },
-  bankid: { emoji: '📱', text: 'Initiating BankID authentication...', progress: 35, color: 'bg-orange-500' },
-  qr_waiting: { emoji: '🔄', text: 'Waiting for QR code scan...', progress: 45, color: 'bg-orange-600' },
-  authenticated: { emoji: '✅', text: 'BankID authentication successful...', progress: 55, color: 'bg-green-500' },
-  configuring: { emoji: '⚙️', text: 'Configuring booking parameters...', progress: 65, color: 'bg-green-600' },
+  idle: { emoji: '⏸️', text: 'System idle...', progress: 0, color: 'bg-gray-500' },
+  initializing: { emoji: '🚀', text: 'Initializing automation...', progress: 5, color: 'bg-blue-500' },
+  waiting_bankid: { emoji: '📱', text: 'Waiting for BankID authentication...', progress: 35, color: 'bg-orange-500' },
   searching: { emoji: '🔍', text: 'Searching for available slots...', progress: 75, color: 'bg-purple-500' },
   booking: { emoji: '📅', text: 'Booking available slot...', progress: 90, color: 'bg-green-700' },
   completed: { emoji: '🎉', text: 'Booking completed successfully!', progress: 100, color: 'bg-green-800' },
-  failed: { emoji: '❌', text: 'Automation failed', progress: 0, color: 'bg-red-500' }
+  error: { emoji: '❌', text: 'Automation failed', progress: 0, color: 'bg-red-500' },
+  cancelled: { emoji: '🛑', text: 'Automation cancelled', progress: 0, color: 'bg-yellow-500' }
 };
 
 interface LogEntry {
@@ -100,7 +97,7 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
           break;
           
         case 'error':
-          setStatus(prev => prev ? { ...prev, status: 'failed', error_message: message.data.error } : null);
+          setStatus(prev => prev ? { ...prev, status: 'error', error_message: message.data.error } : null);
           break;
       }
     };
@@ -157,7 +154,7 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
   };
 
   // Get current status configuration
-  const currentStatusConfig = status ? statusConfigs[status.status] || statusConfigs.failed : statusConfigs.starting;
+  const currentStatusConfig = status ? statusConfigs[status.status] || statusConfigs.error : statusConfigs.idle;
 
   // Format time
   const formatTime = (timestamp: string) => {
@@ -237,7 +234,7 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
       </Card>
 
       {/* QR Code Display */}
-      {qrCode && status?.status === 'qr_waiting' && (
+      {qrCode && status?.status === 'waiting_bankid' && (
         <Card className="bg-slate-900 border-slate-700">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2 text-white">
