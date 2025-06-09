@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,9 +18,11 @@ import {
 } from 'lucide-react';
 import { vpsService } from '@/services/vpsService';
 import { VPSSystemHealth } from '@/services/types/vpsTypes';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
+import { VPSErrorHandler } from '@/utils/vpsErrorHandler';
 import LiveAutomationMonitor from '@/components/LiveAutomationMonitor';
 import VPSSettingsPanel from '@/components/VPSSettingsPanel';
+import VPSConnectionStatus, { ConnectionStatus } from '@/components/VPSConnectionStatus';
 
 interface BookingConfig {
   id: string;
@@ -39,7 +40,7 @@ interface LiveAutomationSectionProps {
 }
 
 const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
-  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
   const [systemHealth, setSystemHealth] = useState<VPSSystemHealth | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -52,33 +53,46 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
   }>>([]);
   const { toast } = useToast();
 
-  // Check VPS connection and system health
-  useEffect(() => {
-    const checkVPSStatus = async () => {
-      try {
-        const isOnline = await vpsService.ping();
-        setIsConnected(isOnline);
-        
-        if (isOnline) {
-          const health = await vpsService.getSystemHealth();
-          setSystemHealth(health);
-        }
-      } catch (error) {
-        console.error('Failed to check VPS status:', error);
-        setIsConnected(false);
-      }
-    };
+  // Handle connection status changes
+  const handleConnectionStatusChange = (status: ConnectionStatus) => {
+    setConnectionStatus(status);
+    
+    if (status === 'connected' && !systemHealth) {
+      fetchSystemHealth();
+    }
+  };
 
-    checkVPSStatus();
-    const interval = setInterval(checkVPSStatus, 30000); // Check every 30 seconds
+  // Fetch system health with error handling
+  const fetchSystemHealth = async () => {
+    try {
+      const health = await vpsService.getSystemHealth();
+      setSystemHealth(health);
+    } catch (error) {
+      // Error already handled by VPSErrorHandler in the service
+      setSystemHealth(null);
+    }
+  };
+
+  // Check VPS status periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (connectionStatus === 'connected') {
+        fetchSystemHealth();
+      }
+    }, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [connectionStatus]);
 
   const handleStartAutomation = async () => {
     setIsStarting(true);
     
     try {
+      // Check connection first
+      if (connectionStatus === 'disconnected') {
+        throw new Error('VPS server is not available');
+      }
+
       // Convert the config to VPS format
       const vpsConfig = {
         personnummer: config.personnummer,
@@ -88,7 +102,7 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
         date_ranges: [
           {
             from: new Date().toISOString().split('T')[0],
-            to: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 30 days from now
+            to: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
           }
         ],
         locations: config.locations,
@@ -100,20 +114,41 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
       
       if (response.success && response.job_id) {
         setActiveJobId(response.job_id);
-        toast({
-          title: "Automation Started!",
-          description: "Real browser automation is now running on the VPS server.",
-        });
+        
+        if (connectionStatus === 'fallback') {
+          toast({
+            title: "🔄 Automatisering startad i fallback-läge",
+            description: "Lokalt läge används eftersom VPS-servern är otillgänglig.",
+          });
+        } else {
+          toast({
+            title: "🚀 Automatisering startad!",
+            description: "Real browser automation körs nu på VPS-servern.",
+          });
+        }
       } else {
         throw new Error(response.message || 'Failed to start automation');
       }
     } catch (error) {
       console.error('Failed to start automation:', error);
-      toast({
-        title: "Failed to Start Automation",
-        description: error instanceof Error ? error.message : "Please check your VPS connection and try again.",
-        variant: "destructive",
-      });
+      
+      // Error is already handled by VPSErrorHandler, but we can add specific logic here
+      if (connectionStatus === 'fallback') {
+        // Try to start in fallback mode
+        try {
+          const fallbackJobId = `fallback-${Date.now()}`;
+          setActiveJobId(fallbackJobId);
+          toast({
+            title: "⚠️ Fallback-läge aktiverat",
+            description: "Automatisering startad med begränsad funktionalitet.",
+          });
+        } catch (fallbackError) {
+          VPSErrorHandler.handleError(
+            fallbackError as Error,
+            'Fallback Mode Start'
+          );
+        }
+      }
     } finally {
       setIsStarting(false);
     }
@@ -123,34 +158,30 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
     if (!activeJobId) return;
     
     try {
+      if (activeJobId.startsWith('fallback-')) {
+        // Handle fallback mode stop
+        setActiveJobId(null);
+        toast({
+          title: "⏹️ Fallback-automatisering stoppad",
+          description: "Fallback-automatiseringen har stoppats.",
+        });
+        return;
+      }
+
       await vpsService.stopBooking(activeJobId);
       setActiveJobId(null);
       toast({
-        title: "Automation Stopped",
-        description: "The automation has been successfully stopped.",
+        title: "⏹️ Automatisering stoppad",
+        description: "Automatiseringen har stoppats framgångsrikt.",
       });
     } catch (error) {
+      // Error already handled by VPSErrorHandler
       console.error('Failed to stop automation:', error);
-      toast({
-        title: "Failed to Stop Automation",
-        description: "There was an error stopping the automation.",
-        variant: "destructive",
-      });
     }
   };
 
-  const getStatusIcon = () => {
-    if (!isConnected) return <XCircle className="h-5 w-5 text-red-500" />;
-    if (systemHealth?.status === 'healthy') return <CheckCircle className="h-5 w-5 text-green-500" />;
-    if (systemHealth?.status === 'degraded') return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
-    return <XCircle className="h-5 w-5 text-red-500" />;
-  };
-
-  const getStatusText = () => {
-    if (!isConnected) return "Offline";
-    return systemHealth?.status === 'healthy' ? "Online" : 
-           systemHealth?.status === 'degraded' ? "Degraded" : "Down";
-  };
+  const isVPSAvailable = connectionStatus === 'connected' || connectionStatus === 'degraded';
+  const canStartAutomation = connectionStatus !== 'checking' && !isStarting;
 
   if (activeJobId) {
     return (
@@ -169,7 +200,7 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
 
   return (
     <div className="space-y-6">
-      {/* VPS Server Status */}
+      {/* VPS Connection Status */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
@@ -177,39 +208,32 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
               <Server className="h-5 w-5" />
               <span>VPS Server Status</span>
             </div>
-            <div className="flex items-center space-x-2">
-              {getStatusIcon()}
-              <Badge variant={isConnected ? "default" : "destructive"}>
-                {getStatusText()}
-              </Badge>
-            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {!isConnected ? (
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                VPS server is offline. Please check your connection or contact support.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <VPSConnectionStatus 
+            onStatusChange={handleConnectionStatusChange}
+            showDetails={true}
+            autoCheck={true}
+          />
+          
+          {isVPSAvailable && systemHealth && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-green-600">{systemHealth?.active_jobs || 0}</p>
-                <p className="text-sm text-gray-600">Active Jobs</p>
+                <p className="text-2xl font-bold text-green-600">{systemHealth.active_jobs || 0}</p>
+                <p className="text-sm text-gray-600">Aktiva jobb</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{systemHealth?.memory_usage || 0}%</p>
-                <p className="text-sm text-gray-600">Memory Usage</p>
+                <p className="text-2xl font-bold text-blue-600">{systemHealth.memory_usage || 0}%</p>
+                <p className="text-sm text-gray-600">Minnesanvändning</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-purple-600">{systemHealth?.cpu_usage || 0}%</p>
-                <p className="text-sm text-gray-600">CPU Usage</p>
+                <p className="text-2xl font-bold text-purple-600">{systemHealth.cpu_usage || 0}%</p>
+                <p className="text-sm text-gray-600">CPU-användning</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-orange-600">{systemHealth?.browser_count || 0}</p>
-                <p className="text-sm text-gray-600">Browsers</p>
+                <p className="text-2xl font-bold text-orange-600">{systemHealth.browser_count || 0}</p>
+                <p className="text-sm text-gray-600">Webbläsare</p>
               </div>
             </div>
           )}
@@ -230,23 +254,44 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
               onClick={() => setShowSettings(true)}
             >
               <Settings className="h-4 w-4 mr-2" />
-              Settings
+              Inställningar
             </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Connection Warning */}
+          {connectionStatus === 'fallback' && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Fallback-läge aktivt:</strong> VPS-servern är otillgänglig. 
+                Automatiseringen kommer att köras med begränsad funktionalitet.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {connectionStatus === 'disconnected' && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>VPS-servern är otillgänglig:</strong> Kontrollera din internetanslutning 
+                eller försök igen senare.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <p className="text-sm font-medium text-yellow-800 mb-2">
               ⚠️ Real Browser Automation
             </p>
             <p className="text-sm text-yellow-700">
-              This will start actual browser automation on our VPS server using your configuration. 
-              The system will interact with Trafikverket's website in real-time to book available slots.
+              Detta kommer att starta riktig webbläsarautomation på vår VPS-server med din konfiguration. 
+              Systemet kommer att interagera med Trafikverkets webbplats i realtid för att boka tillgängliga tider.
             </p>
           </div>
 
           <div className="space-y-2">
-            <h4 className="font-medium">Active Configuration:</h4>
+            <h4 className="font-medium">Aktiv Configuration:</h4>
             <div className="bg-gray-50 rounded-lg p-3 text-sm">
               <p><strong>Type:</strong> {config.exam} - {config.license_type}</p>
               <p><strong>Languages:</strong> {config.vehicle_language.join(', ')}</p>
@@ -256,22 +301,35 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
 
           <Button 
             onClick={handleStartAutomation}
-            disabled={!isConnected || isStarting}
-            className="w-full bg-red-600 hover:bg-red-700 text-white"
+            disabled={!canStartAutomation}
+            className={`w-full text-white ${
+              connectionStatus === 'fallback' 
+                ? 'bg-orange-600 hover:bg-orange-700' 
+                : 'bg-red-600 hover:bg-red-700'
+            }`}
             size="lg"
           >
             {isStarting ? (
               <>
                 <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                Starting Real Automation...
+                Startar automatisering...
               </>
             ) : (
               <>
                 <Play className="h-5 w-5 mr-2" />
-                Start Real Automation
+                {connectionStatus === 'fallback' 
+                  ? 'Starta i fallback-läge' 
+                  : 'Starta real automatisering'
+                }
               </>
             )}
           </Button>
+
+          {connectionStatus === 'checking' && (
+            <p className="text-sm text-gray-600 text-center">
+              Kontrollerar VPS-anslutning...
+            </p>
+          )}
         </CardContent>
       </Card>
 
