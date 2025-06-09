@@ -20,6 +20,7 @@ export interface VPSJobResponse {
   job_id: string;
   message?: string;
   error?: string;
+  started_at?: string;
 }
 
 export interface VPSJobStatus {
