@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,6 +11,7 @@ import SubscriptionCard from '@/components/SubscriptionCard';
 import BookingConfigForm from '@/components/BookingConfigForm';
 import AdvancedBookingStatusDashboard from '@/components/AdvancedBookingStatusDashboard';
 import LiveAutomationSection from '@/components/LiveAutomationSection';
+import VPSTestPanel from '@/components/VPSTestPanel';
 
 interface BookingConfig {
   id: string;
@@ -111,6 +111,11 @@ const Dashboard = () => {
       <DashboardHeader />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
         <SubscriptionCard />
+        
+        {/* VPS Developer Tools */}
+        <div className="mb-8">
+          <VPSTestPanel />
+        </div>
         
         {/* Live Automation Section */}
         {activeConfig && (
