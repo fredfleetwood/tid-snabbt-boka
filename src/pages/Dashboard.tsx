@@ -11,6 +11,7 @@ import DashboardHeader from '@/components/DashboardHeader';
 import SubscriptionCard from '@/components/SubscriptionCard';
 import BookingConfigForm from '@/components/BookingConfigForm';
 import AdvancedBookingStatusDashboard from '@/components/AdvancedBookingStatusDashboard';
+import LiveAutomationSection from '@/components/LiveAutomationSection';
 
 interface BookingConfig {
   id: string;
@@ -111,16 +112,38 @@ const Dashboard = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
         <SubscriptionCard />
         
+        {/* Live Automation Section */}
         {activeConfig && (
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Avancerad automatisering
+            <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+              <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm mr-3">LIVE</span>
+              Real Browser Automation
             </h2>
-            <AdvancedBookingStatusDashboard configId={activeConfig.id} />
+            <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-1 mb-4">
+              <LiveAutomationSection config={activeConfig} />
+            </div>
           </div>
         )}
         
-        <BookingConfigForm />
+        {/* Configuration Mode Section */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+            <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm mr-3">CONFIG</span>
+            Configuration Mode
+          </h2>
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-1">
+            {activeConfig && (
+              <div className="mb-8">
+                <h3 className="text-xl font-semibold text-gray-800 mb-4">
+                  Advanced Simulation Dashboard
+                </h3>
+                <AdvancedBookingStatusDashboard configId={activeConfig.id} />
+              </div>
+            )}
+            
+            <BookingConfigForm />
+          </div>
+        </div>
       </div>
     </div>
   );
