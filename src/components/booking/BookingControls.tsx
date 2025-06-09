@@ -22,9 +22,10 @@ const BookingControls = ({
   onStart, 
   onStop 
 }: BookingControlsProps) => {
+  const isError = session?.status === 'error';
+
   return (
     <>
-      {/* Control Buttons */}
       <div className="flex space-x-3">
         {!isActive ? (
           <Button 
@@ -36,21 +37,14 @@ const BookingControls = ({
             {isStarting ? 'Startar...' : 'Starta bokning'}
           </Button>
         ) : (
-          <Button 
-            onClick={onStop}
-            variant="destructive"
-          >
+          <Button onClick={onStop} variant="destructive">
             <Square className="h-4 w-4 mr-2" />
             Stoppa bokning
           </Button>
         )}
 
-        {session?.status === 'error' && (
-          <Button 
-            onClick={onStart}
-            variant="outline"
-            disabled={isStarting}
-          >
+        {isError && (
+          <Button onClick={onStart} variant="outline" disabled={isStarting}>
             <RotateCcw className="h-4 w-4 mr-2" />
             Försök igen
           </Button>

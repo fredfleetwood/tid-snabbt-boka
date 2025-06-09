@@ -14,7 +14,7 @@ interface DateLocationSectionProps {
   errors: FieldErrors<FormData>;
 }
 
-const DateLocationSection = ({ control, errors }: DateLocationSectionProps) => {
+const DateLocationSection = ({ control }: DateLocationSectionProps) => {
   return (
     <Card>
       <CardHeader>

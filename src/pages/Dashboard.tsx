@@ -30,7 +30,6 @@ const Dashboard = () => {
   const [searchParams] = useSearchParams();
   const [configs, setConfigs] = useState<BookingConfig[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
   const { refreshSubscription } = useSubscription();
 
   useEffect(() => {
@@ -46,15 +45,16 @@ const Dashboard = () => {
       fetchBookingConfigs();
       
       // Check for payment success/cancellation
-      if (searchParams.get('success') === 'true') {
+      const success = searchParams.get('success');
+      const canceled = searchParams.get('canceled');
+      
+      if (success === 'true') {
         toast({
           title: "Betalning genomförd!",
           description: "Din prenumeration är nu aktiv. Det kan ta en minut innan statusen uppdateras.",
         });
-        setTimeout(() => {
-          refreshSubscription();
-        }, 2000);
-      } else if (searchParams.get('canceled') === 'true') {
+        setTimeout(refreshSubscription, 2000);
+      } else if (canceled === 'true') {
         toast({
           title: "Betalning avbruten",
           description: "Din betalning avbröts. Du kan försöka igen när som helst.",
@@ -81,10 +81,6 @@ const Dashboard = () => {
         });
       } else {
         setConfigs(data || []);
-        // Set the first config as active for the advanced dashboard
-        if (data && data.length > 0) {
-          setActiveConfigId(data[0].id);
-        }
         logSecurityEvent('DATA_FETCH_SUCCESS', { configCount: data?.length || 0 });
       }
     } catch (error) {
@@ -107,19 +103,20 @@ const Dashboard = () => {
     return null;
   }
 
+  const activeConfig = configs[0];
+
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardHeader />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
         <SubscriptionCard />
         
-        {/* Show Advanced Booking Dashboard if user has configs */}
-        {activeConfigId && (
+        {activeConfig && (
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               Avancerad automatisering
             </h2>
-            <AdvancedBookingStatusDashboard configId={activeConfigId} />
+            <AdvancedBookingStatusDashboard configId={activeConfig.id} />
           </div>
         )}
         

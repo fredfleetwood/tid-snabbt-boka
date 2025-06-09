@@ -38,11 +38,7 @@ export const useSubscription = () => {
       if (error) {
         console.error('Subscription check error:', error);
         logSecurityEvent('SUBSCRIPTION_CHECK_ERROR', { error: error.message });
-        setSubscription(prev => ({
-          ...prev,
-          loading: false,
-          error: error.message,
-        }));
+        setSubscription(prev => ({ ...prev, loading: false, error: error.message }));
         return;
       }
 
@@ -79,7 +75,6 @@ export const useSubscription = () => {
 
   return {
     ...subscription,
-    checkSubscription,
     refreshSubscription,
   };
 };

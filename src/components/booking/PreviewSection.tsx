@@ -10,6 +10,13 @@ interface PreviewSectionProps {
 }
 
 const PreviewSection = ({ watch, watchedExam }: PreviewSectionProps) => {
+  const personnummer = watch('personnummer');
+  const licenseType = watch('license_type');
+  const exam = watch('exam');
+  const vehicleLanguage = watch('vehicle_language');
+  const dateRanges = watch('date_ranges');
+  const locations = watch('locations');
+
   return (
     <Card>
       <CardHeader>
@@ -17,12 +24,12 @@ const PreviewSection = ({ watch, watchedExam }: PreviewSectionProps) => {
       </CardHeader>
       <CardContent>
         <div className="space-y-3 text-sm">
-          <p><strong>Personnummer:</strong> {watch('personnummer') || 'Ej angivet'}</p>
-          <p><strong>Körkortsbehörighet:</strong> {watch('license_type')}</p>
-          <p><strong>Provtyp:</strong> {watch('exam')}</p>
-          <p><strong>{watchedExam === 'Körprov' ? 'Fordon:' : 'Språk:'}</strong> {watch('vehicle_language')?.join(', ') || 'Ej angivet'}</p>
-          <p><strong>Datumperioder:</strong> {watch('date_ranges')?.length || 0} st</p>
-          <p><strong>Provplatser:</strong> {watch('locations')?.join(', ') || 'Inga valda'}</p>
+          <p><strong>Personnummer:</strong> {personnummer || 'Ej angivet'}</p>
+          <p><strong>Körkortsbehörighet:</strong> {licenseType}</p>
+          <p><strong>Provtyp:</strong> {exam}</p>
+          <p><strong>{watchedExam === 'Körprov' ? 'Fordon:' : 'Språk:'}</strong> {vehicleLanguage?.join(', ') || 'Ej angivet'}</p>
+          <p><strong>Datumperioder:</strong> {dateRanges?.length || 0} st</p>
+          <p><strong>Provplatser:</strong> {locations?.join(', ') || 'Inga valda'}</p>
         </div>
       </CardContent>
     </Card>

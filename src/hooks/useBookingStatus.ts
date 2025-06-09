@@ -16,13 +16,11 @@ interface BookingSession {
 export const useBookingStatus = (configId?: string) => {
   const { user } = useAuth();
   const [session, setSession] = useState<BookingSession | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
 
-    // Load existing session
     const loadSession = async () => {
       if (configId) {
         const { data } = await supabase
@@ -41,7 +39,6 @@ export const useBookingStatus = (configId?: string) => {
 
     loadSession();
 
-    // Set up real-time subscription
     const channel = supabase
       .channel('booking-status')
       .on(
@@ -56,16 +53,13 @@ export const useBookingStatus = (configId?: string) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const updatedSession = payload.new as BookingSession;
             
-            // Only update if it's for the current config or if no specific config
             if (!configId || updatedSession.config_id === configId) {
               setSession(updatedSession);
             }
           }
         }
       )
-      .subscribe((status) => {
-        setIsConnected(status === 'SUBSCRIBED');
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -76,8 +70,7 @@ export const useBookingStatus = (configId?: string) => {
 
   return {
     session,
-    isConnected,
     loading,
-    isActive
+    isActive: !!isActive
   };
 };
