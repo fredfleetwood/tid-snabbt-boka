@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -100,8 +101,6 @@ const Dashboard = () => {
   if (!user) {
     return null;
   }
-
-  const activeConfig = configs[0];
 
   return (
     <div className="min-h-screen bg-gray-50">
