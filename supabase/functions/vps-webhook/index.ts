@@ -95,10 +95,15 @@ serve(async (req) => {
       last_vps_update: new Date().toISOString()
     };
 
-    // Add QR code if provided
+    // Handle QR code updates - check both direct QR and Storage notifications
     if (qr_code_image) {
       updatedDetails.qr_code_image = qr_code_image;
       updatedDetails.qr_updated_at = new Date().toISOString();
+    } else if (payload.data?.qr_in_storage) {
+      // QR stored in Supabase Storage - set flag for frontend to fetch
+      updatedDetails.qr_in_storage = true;
+      updatedDetails.qr_updated_at = new Date().toISOString();
+      updatedDetails.qr_auth_ref = payload.data?.auth_ref;
     }
 
     // Add booking result if completed
@@ -170,7 +175,7 @@ serve(async (req) => {
         payload: broadcastPayload
       });
 
-    // If QR code is provided, also send QR-specific event
+    // Send QR-specific events for both direct QR and Storage notifications
     if (qr_code_image) {
       await supabaseClient
         .channel(`booking-${session.user_id}`)
@@ -182,6 +187,22 @@ serve(async (req) => {
             job_id: job_id,
             qr_code: qr_code_image,
             timestamp: new Date().toISOString()
+          }
+        });
+    } else if (payload.data?.qr_in_storage) {
+      // Notify frontend that new QR is available in Storage
+      await supabaseClient
+        .channel(`booking-${session.user_id}`)
+        .send({
+          type: 'broadcast',
+          event: 'qr_code_update',
+          payload: {
+            session_id: session.id,
+            job_id: job_id,
+            qr_in_storage: true,
+            qr_auth_ref: payload.data?.auth_ref,
+            timestamp: new Date().toISOString(),
+            message: 'New QR code available in Storage'
           }
         });
     }

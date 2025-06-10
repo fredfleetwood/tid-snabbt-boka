@@ -20,6 +20,7 @@ export interface VPSWebSocketMessage {
 
 export class VPSPollingService {
   private baseUrl = 'https://kqemgnbqjrqepzkigfcx.supabase.co/functions/v1/vps-proxy';
+  private qrStorageUrl = 'https://kqemgnbqjrqepzkigfcx.supabase.co/functions/v1/qr-storage';
   private authToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxZW1nbmJxanJxZXB6a2lnZmN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyMTQ4MDEsImV4cCI6MjA2NDc5MDgwMX0.tnPomyWLMseJX0GlrUeO63Ig9GRZSTh1O1Fi2p9q8mc';
   private pollingInterval: NodeJS.Timeout | null = null;
   private statusPollingInterval: NodeJS.Timeout | null = null;
@@ -137,9 +138,10 @@ export class VPSPollingService {
 
   /**
    * Progressive QR polling - starts slow, speeds up when QR detected
+   * Uses Supabase Storage for efficient QR retrieval
    */
   private async startProgressiveQRPolling(jobId: string): Promise<void> {
-    console.log(`📈 [PROGRESSIVE-QR] Starting progressive QR polling for job: ${jobId}`);
+    console.log(`📈 [PROGRESSIVE-QR] Starting progressive QR polling via Storage for job: ${jobId}`);
     
     let currentInterval = 5000; // Start with 5 second intervals
     let hasSeenQR = false;
@@ -147,7 +149,7 @@ export class VPSPollingService {
     const pollQRCode = async () => {
       try {
         const startTime = Date.now();
-        const response = await fetch(`${this.baseUrl}?job_id=${jobId}&action=qr&_t=${Date.now()}`, {
+        const response = await fetch(`${this.qrStorageUrl}?job_id=${jobId}&_t=${Date.now()}`, {
           headers: {
             'Authorization': `Bearer ${this.authToken}`,
             'apikey': this.authToken,
@@ -162,9 +164,9 @@ export class VPSPollingService {
         if (response.ok) {
           const data = await response.json();
           
-          // Check for QR code in response
-          if (data.qr_code || data.qr_code_base64 || data.image_data) {
-            const qrCode = data.image_data || data.qr_code_base64 || data.qr_code;
+          // Check for QR code URL in response (from Supabase Storage)
+          if (data.qr_url && data.success) {
+            const qrCode = data.qr_url; // Storage URL instead of base64
             const currentTime = Date.now();
             
             // First QR detected - switch to fast polling!
@@ -192,10 +194,10 @@ export class VPSPollingService {
             }
           } else {
             // No QR yet - this is expected early on
-            if (data.qr_status === 'expired_or_pending') {
-              console.log(`⏰ [PROGRESSIVE-QR] QR expired/pending (${responseTime}ms) - waiting for renewal (${currentInterval}ms intervals)`);
+            if (data.error && data.error.includes('not found')) {
+              console.log(`⏳ [PROGRESSIVE-QR] QR Storage not ready (${responseTime}ms) - waiting for QR upload... (${currentInterval}ms intervals)`);
             } else {
-              console.log(`⏳ [PROGRESSIVE-QR] No QR yet (${responseTime}ms) - backend preparing... (${currentInterval}ms intervals)`);
+              console.log(`⏳ [PROGRESSIVE-QR] No QR URL yet (${responseTime}ms) - backend preparing... (${currentInterval}ms intervals)`);
             }
           }
 
@@ -220,9 +222,10 @@ export class VPSPollingService {
 
   /**
    * Original QR polling method (for when we know QR is ready)
+   * Uses Supabase Storage for efficient QR retrieval
    */
   async startQRPolling(jobId: string, intervalMs: number = 1000): Promise<void> {
-    console.log(`🔍 [QR-POLLING] Starting FAST polling for job: ${jobId} (interval: ${intervalMs}ms)`);
+    console.log(`🔍 [QR-POLLING] Starting FAST Storage polling for job: ${jobId} (interval: ${intervalMs}ms)`);
     
     this.stopQRPolling(); // Stop any existing polling
     
@@ -236,7 +239,7 @@ export class VPSPollingService {
     const pollQRCode = async () => {
       try {
         const startTime = Date.now();
-        const response = await fetch(`${this.baseUrl}?job_id=${jobId}&action=qr&_t=${Date.now()}`, {
+        const response = await fetch(`${this.qrStorageUrl}?job_id=${jobId}&_t=${Date.now()}`, {
           headers: {
             'Authorization': `Bearer ${this.authToken}`,
             'apikey': this.authToken,
@@ -251,9 +254,9 @@ export class VPSPollingService {
         if (response.ok) {
           const data = await response.json();
           
-          // Check for QR code in response
-          if (data.qr_code || data.qr_code_base64 || data.image_data) {
-            const qrCode = data.image_data || data.qr_code_base64 || data.qr_code;
+          // Check for QR code URL in response (from Supabase Storage)
+          if (data.qr_url && data.success) {
+            const qrCode = data.qr_url; // Storage URL instead of base64
             const currentTime = Date.now();
             
             // QR DEDUPLICATION - only send if different from last QR
@@ -273,11 +276,11 @@ export class VPSPollingService {
               console.log(`🔄 [QR-SAME] Identical QR received (${responseTime}ms response time)`);
             }
           } else {
-            // Check if QR expired or just pending
-            if (data.qr_status === 'expired_or_pending') {
-              console.log(`⏰ [QR-EXPIRED] QR code expired or pending (${responseTime}ms) - waiting for renewal`);
+            // Check if QR storage is not ready yet
+            if (data.error && data.error.includes('not found')) {
+              console.log(`⏰ [QR-STORAGE] QR not uploaded to Storage yet (${responseTime}ms) - waiting for backend upload`);
             } else {
-              console.log(`⭕ [QR-EMPTY] No QR in response (${responseTime}ms)`);
+              console.log(`⭕ [QR-STORAGE] No QR URL in Storage response (${responseTime}ms)`);
             }
           }
 
@@ -396,13 +399,14 @@ export class VPSPollingService {
 
   /**
    * Refresh QR code once (for manual refresh buttons)
+   * Uses Supabase Storage for efficient QR retrieval
    */
   async refreshQRCode(jobId: string): Promise<string | null> {
-    console.log(`🔄 [QR-REFRESH] Manual refresh for job: ${jobId}`);
+    console.log(`🔄 [QR-REFRESH] Manual Storage refresh for job: ${jobId}`);
     
     try {
       const startTime = Date.now();
-      const response = await fetch(`${this.baseUrl}?job_id=${jobId}&action=qr&_t=${Date.now()}`, {
+      const response = await fetch(`${this.qrStorageUrl}?job_id=${jobId}&_t=${Date.now()}`, {
         headers: {
           'Authorization': `Bearer ${this.authToken}`,
           'apikey': this.authToken,
@@ -417,10 +421,10 @@ export class VPSPollingService {
       if (response.ok) {
         const data = await response.json();
         
-        // Check for QR code in response
-        if (data.qr_code || data.qr_code_base64 || data.image_data) {
-          const qrCode = data.image_data || data.qr_code_base64 || data.qr_code;
-          console.log(`✅ [QR-REFRESH] Found QR code (${responseTime}ms)`);
+        // Check for QR code URL in response (from Supabase Storage)
+        if (data.qr_url && data.success) {
+          const qrCode = data.qr_url; // Storage URL instead of base64
+          console.log(`✅ [QR-REFRESH] Found QR Storage URL (${responseTime}ms)`);
           
           // Update tracking and send to callback
           this.lastQrCode = qrCode;
@@ -429,16 +433,16 @@ export class VPSPollingService {
           
           return qrCode;
         } else {
-          console.log(`⭕ [QR-REFRESH] No QR code available (${responseTime}ms)`);
+          console.log(`⭕ [QR-REFRESH] No QR URL in Storage (${responseTime}ms)`);
           return null;
         }
       } else {
         const errorText = await response.text();
-        console.warn(`⚠️ [QR-REFRESH] Failed: ${response.status} (${responseTime}ms) - ${errorText}`);
+        console.warn(`⚠️ [QR-REFRESH] Storage fetch failed: ${response.status} (${responseTime}ms) - ${errorText}`);
         return null;
       }
     } catch (error) {
-      console.error('❌ [QR-REFRESH] Error:', error);
+      console.error('❌ [QR-REFRESH] Storage error:', error);
       return null;
     }
   }
