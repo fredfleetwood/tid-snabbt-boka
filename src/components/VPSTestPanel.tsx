@@ -217,10 +217,12 @@ const VPSTestPanel = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      const response = await fetch('http://87.106.247.92:8080/api/system/info', {
+      // Changed endpoint to correct one
+      const response = await fetch('http://87.106.247.92:8080/api/v1/booking/status', {
         headers: {
           'Authorization': 'Bearer test-secret-token-12345',
           'Content-Type': 'application/json',
+          'Origin': 'https://lovable.dev'
         },
         signal: controller.signal
       });

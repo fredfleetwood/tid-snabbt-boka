@@ -1,4 +1,5 @@
 
+
 // VPS Service Types and Interfaces
 
 export interface VPSBookingConfig {
@@ -39,14 +40,14 @@ export interface VPSJobStatus {
 }
 
 export interface VPSSystemHealth {
-  status: 'healthy' | 'degraded' | 'down';
-  uptime: number;
-  browser_count: number;
+  status: 'healthy' | 'unhealthy';
+  timestamp: string;
   active_jobs: number;
   memory_usage: number;
   cpu_usage: number;
+  browser_count: number;
+  uptime: number;
   last_check: string;
-  version?: string;
 }
 
 export interface VPSError {
@@ -69,3 +70,4 @@ export interface VPSApiResponse<T = any> {
   error?: VPSError;
   timestamp: string;
 }
+

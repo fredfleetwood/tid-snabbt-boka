@@ -1,3 +1,4 @@
+
 import { VPS_CONFIG } from '@/config/vps';
 import {
   VPSBookingConfig,
@@ -60,6 +61,7 @@ export class VPSService {
           signal: controller.signal,
           headers: {
             ...VPS_CONFIG.getAuthHeaders(),
+            'Origin': 'https://lovable.dev',
             ...options.headers,
           },
         });
@@ -340,20 +342,35 @@ export class VPSService {
     console.log('[VPS-SERVICE] Checking system health');
 
     try {
-      const response = await this.makeRequest<VPSSystemHealth>(
-        VPS_CONFIG.endpoints.health
-      );
-
-      if (!response.success || !response.data) {
+      // Call the correct health endpoint with direct fetch
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch('http://87.106.247.92:8080/health/detailed', {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          'Authorization': 'Bearer test-secret-token-12345',
+          'Content-Type': 'application/json',
+          'Origin': 'https://lovable.dev'
+        },
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
         throw new VPSServiceError(
-          response.error?.message || 'Failed to get system health',
+          `Health check failed with status ${response.status}`,
           'HEALTH_CHECK_FAILED'
         );
       }
 
+      const data = await response.json();
       this.serverReachable = true;
       this.fallbackMode = false;
-      return response.data;
+      
+      console.log('[VPS-SERVICE] Health data received:', data);
+      return data;
     } catch (error) {
       console.error('[VPS-SERVICE] Error checking system health:', error);
       this.serverReachable = false;
@@ -361,12 +378,13 @@ export class VPSService {
       
       // Return degraded status if health check fails
       return {
-        status: 'down',
-        uptime: 0,
-        browser_count: 0,
+        status: 'unhealthy',
+        timestamp: new Date().toISOString(),
         active_jobs: 0,
         memory_usage: 0,
         cpu_usage: 0,
+        browser_count: 0,
+        uptime: 0,
         last_check: new Date().toISOString(),
       };
     }
@@ -563,3 +581,4 @@ export class VPSService {
 
 export const vpsService = new VPSService();
 export default vpsService;
+
