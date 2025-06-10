@@ -263,19 +263,19 @@ export class VPSErrorHandler {
 
     const retryOptions = { ...defaultOptions, ...options };
     const retryKey = operationName;
-    let currentAttempt = this.retryCounters.get(retryKey) || 0;
+    let currentAttempt = VPSErrorHandler.retryCounters.get(retryKey) || 0;
 
     while (currentAttempt < retryOptions.maxAttempts) {
       try {
         const result = await operation();
         // Reset retry counter on success
-        this.retryCounters.delete(retryKey);
+        VPSErrorHandler.retryCounters.delete(retryKey);
         return result;
       } catch (error) {
         currentAttempt++;
-        this.retryCounters.set(retryKey, currentAttempt);
+        VPSErrorHandler.retryCounters.set(retryKey, currentAttempt);
 
-        const vpsError = this.handleError(
+        const vpsError = VPSErrorHandler.handleError(
           error as Error, 
           `Attempt ${currentAttempt}/${retryOptions.maxAttempts} for ${operationName}`,
           currentAttempt === 1 // Only show toast on first failure
@@ -320,15 +320,15 @@ export class VPSErrorHandler {
   }
 
   static getRetryCount(operationName: string): number {
-    return this.retryCounters.get(operationName) || 0;
+    return VPSErrorHandler.retryCounters.get(operationName) || 0;
   }
 
   static resetRetryCount(operationName: string): void {
-    this.retryCounters.delete(operationName);
+    VPSErrorHandler.retryCounters.delete(operationName);
   }
 
   static clearAllRetryCounters(): void {
-    this.retryCounters.clear();
+    VPSErrorHandler.retryCounters.clear();
   }
 }
 
