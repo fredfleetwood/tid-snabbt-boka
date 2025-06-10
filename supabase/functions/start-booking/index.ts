@@ -32,10 +32,10 @@ serve(async (req) => {
     console.log('- SUPABASE_ANON_KEY:', !!supabaseAnonKey);
     console.log('- TRIGGER_SECRET_KEY:', !!triggerSecretKey);
 
-    if (!supabaseUrl || !supabaseAnonKey || !triggerSecretKey) {
-      console.error('❌ Missing environment variables');
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('❌ Missing critical environment variables');
       return new Response(JSON.stringify({ 
-        error: 'Server configuration error',
+        error: 'Server configuration error - missing Supabase config',
         debug: {
           supabaseUrl: !!supabaseUrl,
           supabaseAnonKey: !!supabaseAnonKey,
@@ -47,8 +47,26 @@ serve(async (req) => {
       });
     }
 
+    // TRIGGER_SECRET_KEY is optional for testing
+    if (!triggerSecretKey) {
+      console.warn('⚠️ TRIGGER_SECRET_KEY missing - continuing for testing purposes');
+    }
+
     // Create Supabase client
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    let supabaseClient;
+    try {
+      supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+      console.log('✅ Supabase client created successfully');
+    } catch (clientError) {
+      console.error('❌ Failed to create Supabase client:', clientError);
+      return new Response(JSON.stringify({ 
+        error: 'Failed to initialize Supabase client',
+        details: clientError.message
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
@@ -66,23 +84,35 @@ serve(async (req) => {
 
     // Get user from JWT
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    let user;
+    try {
+      const { data, error: authError } = await supabaseClient.auth.getUser(token);
+      
+      console.log('Auth result:');
+      console.log('- User ID:', data?.user?.id);
+      console.log('- Auth error:', authError?.message);
 
-    console.log('Auth result:');
-    console.log('- User ID:', user?.id);
-    console.log('- Auth error:', authError?.message);
-
-    if (authError || !user) {
-      console.error('❌ Authentication failed:', authError);
+      if (authError || !data?.user) {
+        console.error('❌ Authentication failed:', authError);
+        return new Response(JSON.stringify({ 
+          error: 'Authentication failed: ' + (authError?.message || 'Invalid token')
+        }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      user = data.user;
+      console.log('✅ User authenticated:', user.id);
+    } catch (authException) {
+      console.error('❌ Auth exception:', authException);
       return new Response(JSON.stringify({ 
-        error: 'Authentication failed: ' + (authError?.message || 'Unknown auth error')
+        error: 'Authentication exception: ' + authException.message
       }), {
-        status: 401,
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    console.log('✅ User authenticated:', user.id);
 
     // Parse request body safely
     let requestBody = {};
