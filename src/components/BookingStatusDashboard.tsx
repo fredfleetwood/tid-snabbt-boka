@@ -321,6 +321,29 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
     if (!session) return;
 
     try {
+      // First, try to stop VPS job if we have a job ID
+      if (vpsJobId) {
+        try {
+          console.log('🛑 Stopping VPS job:', vpsJobId);
+          const { error: stopError } = await supabase.functions.invoke('stop-booking', {
+            body: { 
+              job_id: vpsJobId,
+              session_id: session.id 
+            }
+          });
+          
+          if (stopError) {
+            console.warn('Failed to stop VPS job:', stopError);
+          } else {
+            console.log('✅ VPS job stopped successfully');
+          }
+        } catch (vpsError) {
+          console.warn('Error stopping VPS job:', vpsError);
+          // Continue with local cleanup even if VPS stop fails
+        }
+      }
+
+      // Update database status
       const { error } = await supabase
         .from('booking_sessions')
         .update({
@@ -342,12 +365,13 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
         description: "Den automatiska bokningen har stoppats.",
       });
 
-      // Stop VPS services
+      // Stop local VPS services
       if (vpsServiceRef.current) {
         vpsServiceRef.current.cleanup();
       }
       setVpsJobId(null);
       setShowQRCode(false);
+      setSession(null); // Clear session to reset UI
     } catch (error) {
       console.error('Error stopping booking:', error);
       toast({
@@ -358,7 +382,18 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
     }
   };
 
-  const isActive = session && ['initializing', 'waiting_bankid', 'searching', 'booking'].includes(session.status);
+  const isActive = session && [
+    'initializing', 
+    'browser_starting', 
+    'navigating', 
+    'logging_in', 
+    'waiting_bankid',
+    'bankid_waiting', 
+    'searching', 
+    'searching_times',
+    'booking',
+    'booking_time'
+  ].includes(session.status);
   const bookingDetails = getBookingDetails(session?.booking_details);
 
   return (
