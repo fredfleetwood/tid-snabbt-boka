@@ -26,6 +26,11 @@ export class VPSPollingService {
   private onStatusUpdate?: (status: VPSJobStatus) => void;
   private onQRCode?: (qrCode: string) => void;
   private isHTTPS: boolean;
+  
+  // QR code deduplication
+  private lastQrCode: string = '';
+  private qrUpdateCount: number = 0;
+  private lastQrTimestamp: number = 0;
 
   constructor(
     onStatusUpdate?: (status: VPSJobStatus) => void,
@@ -36,39 +41,59 @@ export class VPSPollingService {
   }
 
   /**
-   * Start polling for QR codes for a specific job
+   * Start polling for QR codes for a specific job - FIXED VERSION
    */
-  async startQRPolling(jobId: string, intervalMs: number = 500): Promise<void> {
-    console.log(`🔍 Starting QR polling for job: ${jobId}`);
+  async startQRPolling(jobId: string, intervalMs: number = 250): Promise<void> {
+    console.log(`🔍 [QR-POLLING] Starting for job: ${jobId} (interval: ${intervalMs}ms)`);
     
     this.stopQRPolling(); // Stop any existing polling
     
+    // Reset QR tracking
+    this.lastQrCode = '';
+    this.qrUpdateCount = 0;
+    this.lastQrTimestamp = 0;
+    
     const pollQRCode = async () => {
       try {
-        const response = await fetch(`${this.baseUrl}?job_id=${jobId}&action=qr`, {
+        const startTime = Date.now();
+        const response = await fetch(`${this.baseUrl}?job_id=${jobId}&action=qr&_t=${Date.now()}`, {
           headers: {
             'Authorization': `Bearer ${this.authToken}`,
             'apikey': this.authToken,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
           }
         });
 
+        const responseTime = Date.now() - startTime;
+
         if (response.ok) {
           const data = await response.json();
-          console.log('📱 QR polling response:', data);
           
+          // Check for QR code in response
           if (data.qr_code || data.qr_code_base64 || data.image_data) {
             const qrCode = data.image_data || data.qr_code_base64 || data.qr_code;
-            console.log('✅ QR code received - switching to high-speed polling');
-            this.onQRCode?.(qrCode);
+            const currentTime = Date.now();
             
-            // Switch to ultra-fast polling when QR codes are actively being generated
-            if (intervalMs > 300) {
-              console.log('🚀 Switching to ultra-fast QR polling (300ms)');
-              this.stopQRPolling();
-              setTimeout(() => this.startQRPolling(jobId, 300), 100);
-              return;
+            // QR DEDUPLICATION - only send if different from last QR
+            if (qrCode !== this.lastQrCode) {
+              this.qrUpdateCount++;
+              const timeSinceLastQr = this.lastQrTimestamp > 0 ? currentTime - this.lastQrTimestamp : 0;
+              
+              console.log(`🆕 [QR-UPDATE #${this.qrUpdateCount}] NEW QR detected!`);
+              console.log(`📊 [QR-TIMING] Response time: ${responseTime}ms, Gap since last QR: ${timeSinceLastQr}ms`);
+              console.log(`📱 [QR-DATA] Length: ${qrCode.length}, Preview: ${qrCode.substring(0, 50)}...`);
+              
+              this.lastQrCode = qrCode;
+              this.lastQrTimestamp = currentTime;
+              this.onQRCode?.(qrCode);
+            } else {
+              // Same QR code - log but don't send
+              console.log(`🔄 [QR-SAME] Identical QR received (${responseTime}ms response time)`);
             }
+          } else {
+            console.log(`⭕ [QR-EMPTY] No QR in response (${responseTime}ms)`);
           }
 
           // Update status if provided
@@ -76,14 +101,16 @@ export class VPSPollingService {
             this.onStatusUpdate?.(data);
           }
         } else {
-          console.warn('⚠️ QR polling failed:', response.status, await response.text());
+          const errorText = await response.text();
+          console.warn(`⚠️ [QR-ERROR] Polling failed: ${response.status} (${responseTime}ms) - ${errorText}`);
         }
       } catch (error) {
-        console.error('❌ QR polling error:', error);
+        console.error('❌ [QR-EXCEPTION] Polling error:', error);
       }
     };
 
-    // Poll immediately, then on interval
+    // Poll immediately, then on consistent interval (NO MORE SWITCHING!)
+    console.log(`⚡ [QR-POLLING] Using CONSISTENT ${intervalMs}ms interval (no switching)`);
     await pollQRCode();
     this.pollingInterval = setInterval(pollQRCode, intervalMs);
   }
@@ -95,7 +122,7 @@ export class VPSPollingService {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
-      console.log('⏹️ QR polling stopped');
+      console.log(`⏹️ [QR-POLLING] Stopped. Total QR updates received: ${this.qrUpdateCount}`);
     }
   }
 
@@ -148,6 +175,17 @@ export class VPSPollingService {
       console.error('❌ Status fetch error:', error);
       return null;
     }
+  }
+
+  /**
+   * Get QR polling statistics
+   */
+  getQRStats() {
+    return {
+      updateCount: this.qrUpdateCount,
+      lastUpdate: this.lastQrTimestamp,
+      lastQrLength: this.lastQrCode.length
+    };
   }
 
   /**
