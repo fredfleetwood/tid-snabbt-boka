@@ -12,6 +12,15 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
   const [timeLeft, setTimeLeft] = useState(180); // 3 minutes
   const [isExpired, setIsExpired] = useState(false);
 
+  // Reset timer when new QR code is received
+  useEffect(() => {
+    if (qrCode) {
+      console.log('🔄 New QR code received, resetting timer');
+      setTimeLeft(180); // Reset to 3 minutes
+      setIsExpired(false); // Reset expired state
+    }
+  }, [qrCode]);
+
   useEffect(() => {
     if (timeLeft <= 0) {
       setIsExpired(true);
@@ -83,9 +92,14 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
                     }}
                   />
                   
-                  {/* Timer overlay */}
-                  <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded text-sm font-mono">
+                  {/* Timer overlay - shows time since last QR update */}
+                  <div className="absolute top-2 right-2 bg-green-600 text-white px-2 py-1 rounded text-sm font-mono">
                     {formatTime(timeLeft)}
+                  </div>
+                  
+                  {/* Live indicator */}
+                  <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-xs font-medium">
+                    LIVE
                   </div>
                 </div>
               )}
@@ -101,6 +115,9 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
               <li>3. Scanna QR-koden ovan</li>
               <li>4. Följ instruktionerna i appen för att logga in</li>
             </ol>
+            <p className="text-xs text-green-600 mt-2 font-medium">
+              ✅ QR-koden uppdateras automatiskt från Trafikverket
+            </p>
           </div>
 
           {/* Refresh Button */}
