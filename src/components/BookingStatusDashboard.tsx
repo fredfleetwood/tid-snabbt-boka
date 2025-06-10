@@ -16,9 +16,10 @@ import { VPSPollingService, VPSJobStatus } from '@/services/vpsPollingService';
 
 interface BookingStatusDashboardProps {
   configId: string;
+  config: any;
 }
 
-const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
+const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProps) => {
   const { user } = useAuth();
   const { subscribed } = useSubscription();
   const { toast } = useToast();
@@ -210,7 +211,18 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
 
     try {
       const { data, error } = await supabase.functions.invoke('start-booking', {
-        body: { config_id: configId }
+        body: {
+          user_id: user.id,
+          config_id: configId,
+          config: {
+            personnummer: config.personnummer,
+            license_type: config.license_type,
+            exam: config.exam,
+            vehicle_language: config.vehicle_language,
+            locations: config.locations,
+            date_ranges: config.date_ranges
+          }
+        }
       });
 
       if (error) throw error;

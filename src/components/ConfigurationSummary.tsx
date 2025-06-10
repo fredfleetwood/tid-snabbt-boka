@@ -136,7 +136,7 @@ const ConfigurationSummary = ({ config, onEdit, onToggleActive, loading }: Confi
       </Card>
 
       {/* Booking Status Dashboard */}
-      <BookingStatusDashboard configId={config.id} />
+      <BookingStatusDashboard configId={config.id} config={config} />
     </div>
   );
 };
