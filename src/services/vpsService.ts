@@ -338,11 +338,11 @@ export class VPSService {
     }
   }
 
+    // I getSystemHealth() metoden, efter await response.json(), LÄGG TILL mappning:
   async getSystemHealth(): Promise<VPSSystemHealth> {
     console.log('[VPS-SERVICE] Checking system health');
-
+  
     try {
-      // Call the correct health endpoint with direct fetch
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
@@ -364,13 +364,26 @@ export class VPSService {
           'HEALTH_CHECK_FAILED'
         );
       }
-
+  
       const data = await response.json();
       this.serverReachable = true;
       this.fallbackMode = false;
       
       console.log('[VPS-SERVICE] Health data received:', data);
-      return data;
+      
+      // MAPPA BACKEND RESPONSE TILL FRONTEND FORMAT:
+      return {
+        status: data.status,
+        timestamp: data.timestamp,
+        active_jobs: data.jobs.active_jobs,
+        websocket_connections: data.connections.websocket_connections,
+        redis: data.system.redis_status,
+        memory_usage: data.performance.memory_usage,
+        cpu_usage: data.performance.cpu_usage,
+        disk_usage: data.performance.disk_usage,
+        browser_status: data.system.browser_status,
+        queue_status: data.system.queue_status
+      };
     } catch (error) {
       console.error('[VPS-SERVICE] Error checking system health:', error);
       this.serverReachable = false;
@@ -381,11 +394,13 @@ export class VPSService {
         status: 'unhealthy',
         timestamp: new Date().toISOString(),
         active_jobs: 0,
+        websocket_connections: 0,
+        redis: 'disconnected',
         memory_usage: 0,
         cpu_usage: 0,
-        browser_count: 0,
-        uptime: 0,
-        last_check: new Date().toISOString(),
+        disk_usage: 0,
+        browser_status: 'unavailable',
+        queue_status: 'unhealthy'
       };
     }
   }
