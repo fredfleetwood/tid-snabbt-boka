@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
@@ -6,6 +5,9 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const VPS_SERVER_URL = 'http://87.106.247.92:8080';
+const VPS_AUTH_TOKEN = 'test-secret-token-12345'; // Use environment variable in production
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -31,18 +33,74 @@ serve(async (req) => {
       throw new Error('Authentication failed');
     }
 
-    const { session_id } = await req.json();
+    const { session_id, job_id } = await req.json();
+
+    if (!session_id && !job_id) {
+      throw new Error('Either session_id or job_id is required');
+    }
 
     // Get the active session
-    const { data: session, error: sessionError } = await supabaseClient
-      .from('booking_sessions')
-      .select('*')
-      .eq('id', session_id)
-      .eq('user_id', user.id)
-      .single();
+    let session: any = null;
+    if (session_id) {
+      const { data: sessionData, error: sessionError } = await supabaseClient
+        .from('booking_sessions')
+        .select('*')
+        .eq('id', session_id)
+        .eq('user_id', user.id)
+        .single();
 
-    if (sessionError || !session) {
+      if (sessionError || !sessionData) {
+        throw new Error('Session not found');
+      }
+      session = sessionData;
+    } else if (job_id) {
+      // Find session by job_id
+      const { data: sessionData, error: sessionError } = await supabaseClient
+        .from('booking_sessions')
+        .select('*')
+        .eq('job_id', job_id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (sessionError || !sessionData) {
+        throw new Error('Session not found for job_id');
+      }
+      session = sessionData;
+    }
+
+    if (!session) {
       throw new Error('Session not found');
+    }
+
+    console.log('Stopping VPS booking:', {
+      sessionId: session.id,
+      jobId: session.job_id,
+      userId: user.id
+    });
+
+    // Call VPS server to stop the booking job
+    let vpsStopSuccess = false;
+    if (session.job_id) {
+      try {
+        const vpsResponse = await fetch(`${VPS_SERVER_URL}/api/v1/booking/stop`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${VPS_AUTH_TOKEN}`
+          },
+          body: JSON.stringify({ job_id: session.job_id })
+        });
+
+        if (vpsResponse.ok) {
+          const vpsResult = await vpsResponse.json();
+          console.log('VPS stop response:', vpsResult);
+          vpsStopSuccess = true;
+        } else {
+          console.warn('VPS stop failed:', vpsResponse.status, vpsResponse.statusText);
+        }
+      } catch (vpsError) {
+        console.warn('Error calling VPS stop:', vpsError);
+      }
     }
 
     // Update session to cancelled status
@@ -56,40 +114,42 @@ serve(async (req) => {
           stage: 'cancelled',
           message: '⏹️ Automatisering stoppad av användare',
           timestamp: new Date().toISOString(),
-          cancelled_by_user: true
+          cancelled_by_user: true,
+          vps_stop_success: vpsStopSuccess
         }
       })
-      .eq('id', session_id);
+      .eq('id', session.id);
 
     if (updateError) {
       throw updateError;
     }
 
-    // If there's a Trigger.dev run ID, attempt to cancel it
-    if (session.booking_details?.trigger_run_id) {
-      try {
-        await fetch(`https://api.trigger.dev/v3/runs/${session.booking_details.trigger_run_id}/cancel`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${Deno.env.get('TRIGGER_DEV_API_KEY')}`,
-            'Content-Type': 'application/json'
-          }
-        });
-      } catch (cancelError) {
-        console.warn('Could not cancel Trigger.dev run:', cancelError);
-        // Don't throw here as the session is already marked as cancelled
-      }
-    }
+    // Broadcast real-time update
+    await supabaseClient
+      .channel(`booking-${user.id}`)
+      .send({
+        type: 'broadcast',
+        event: 'status_update',
+        payload: {
+          session_id: session.id,
+          job_id: session.job_id,
+          status: 'cancelled',
+          message: '⏹️ Automatisering stoppad',
+          progress: 0
+        }
+      });
 
     console.log('Booking automation stopped:', {
-      sessionId: session_id,
+      sessionId: session.id,
+      jobId: session.job_id,
       userId: user.id,
-      triggerRunId: session.booking_details?.trigger_run_id
+      vpsStopSuccess
     });
 
     return new Response(JSON.stringify({ 
       success: true,
-      message: 'Booking automation stopped successfully'
+      message: 'Booking automation stopped successfully',
+      vps_stop_success: vpsStopSuccess
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

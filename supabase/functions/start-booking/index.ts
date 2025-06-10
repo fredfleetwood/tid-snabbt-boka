@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
@@ -6,6 +5,9 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const VPS_SERVER_URL = 'http://87.106.247.92:8080';
+const VPS_AUTH_TOKEN = 'test-secret-token-12345'; // Use environment variable in production
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -99,214 +101,136 @@ serve(async (req) => {
       });
     }
 
-    const { config_id, user_id } = requestBody as { config_id?: string; user_id?: string };
+    const { config_id, user_id, config } = requestBody as { 
+      config_id?: string; 
+      user_id?: string; 
+      config?: any;
+    };
     console.log('Request data:', { config_id, user_id });
 
-    // Create authenticated client
-    const authenticatedClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
-    });
+    if (user_id !== user.id) {
+      console.error('❌ User ID mismatch');
+      return new Response(JSON.stringify({ 
+        error: 'User ID mismatch'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // Fetch booking configs for this user
-    console.log('🔍 Fetching booking configs for user:', user.id);
-    const { data: allConfigs, error: configsError } = await authenticatedClient
-      .from('booking_configs')
+    // Check if user has active subscription
+    const { data: subscription, error: subError } = await supabaseClient
+      .from('user_subscriptions')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .single();
 
-    console.log('📊 Database query result:');
-    console.log('- Configs found:', allConfigs?.length || 0);
-    console.log('- Query error:', configsError?.message);
-
-    if (configsError) {
-      console.error('❌ Database error:', configsError);
+    if (subError || !subscription) {
+      console.error('❌ Active subscription required');
       return new Response(JSON.stringify({ 
-        error: 'Database error: ' + configsError.message
+        error: 'Active subscription required'
       }), {
-        status: 500,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    if (!allConfigs || allConfigs.length === 0) {
-      console.error('❌ No booking configs found');
-      return new Response(JSON.stringify({ 
-        error: 'No booking configuration found. Please create one first.'
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // Create webhook URL for VPS callbacks
+    const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/vps-webhook`;
 
-    // Find the right config
-    let targetConfig = null;
-    let targetConfigId = config_id;
+    // Prepare VPS booking configuration
+    const vpsConfig = {
+      user_id: user.id,
+      config_id: config_id,
+      personnummer: config?.personnummer,
+      license_type: config?.license_type,
+      exam_type: config?.exam,
+      vehicle_language: config?.vehicle_language,
+      locations: config?.locations,
+      date_ranges: config?.date_ranges,
+      webhook_url: webhookUrl
+    };
 
-    if (config_id) {
-      targetConfig = allConfigs.find(config => config.id === config_id);
-      if (!targetConfig) {
-        console.error('❌ Specified config not found:', config_id);
-        return new Response(JSON.stringify({ 
-          error: 'Specified booking configuration not found'
-        }), {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    } else {
-      targetConfig = allConfigs[0];
-      targetConfigId = targetConfig.id;
-      console.log('✅ Using first available config:', targetConfigId);
-    }
+    console.log('Starting VPS booking:', { userId: user.id, config: vpsConfig });
 
-    console.log('🎯 Selected config:', {
-      id: targetConfig.id,
-      exam: targetConfig.exam,
-      license_type: targetConfig.license_type,
-      locations: targetConfig.locations
+    // Call VPS server to start booking
+    const vpsResponse = await fetch(`${VPS_SERVER_URL}/api/v1/booking/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${VPS_AUTH_TOKEN}`
+      },
+      body: JSON.stringify(vpsConfig)
     });
 
-    // Create booking session
-    console.log('📝 Creating booking session...');
-    const { data: session, error: sessionError } = await authenticatedClient
+    if (!vpsResponse.ok) {
+      throw new Error(`VPS server error: ${vpsResponse.status} ${vpsResponse.statusText}`);
+    }
+
+    const vpsResult = await vpsResponse.json();
+
+    // Create booking session record
+    const { data: session, error: sessionError } = await supabaseClient
       .from('booking_sessions')
       .insert({
         user_id: user.id,
-        config_id: targetConfigId,
-        status: 'initializing',
-        started_at: new Date().toISOString(),
+        job_id: vpsResult.job_id,
+        status: 'starting',
         booking_details: {
-          stage: 'starting',
-          message: '🚀 Startar automatisering...',
-          timestamp: new Date().toISOString(),
-          cycle_count: 0,
-          slots_found: 0,
-          current_operation: 'initialization'
+          config: vpsConfig,
+          vps_response: vpsResult,
+          stage: 'initializing',
+          message: '🚀 Startar automatisk bokning...',
+          timestamp: new Date().toISOString()
         }
       })
       .select()
       .single();
 
-    console.log('📄 Session creation result:');
-    console.log('- Session created:', !!session);
-    console.log('- Session ID:', session?.id);
-    console.log('- Session error:', sessionError?.message);
-
-    if (sessionError || !session) {
-      console.error('❌ Failed to create session:', sessionError);
-      return new Response(JSON.stringify({ 
-        error: 'Failed to create booking session: ' + (sessionError?.message || 'Unknown error')
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Prepare Trigger.dev payload
-    const triggerPayload = {
-      user_id: user.id,
-      session_id: session.id,
-      config: {
-        license_type: targetConfig.license_type,
-        exam: targetConfig.exam,
-        vehicle_language: targetConfig.vehicle_language,
-        date_ranges: targetConfig.date_ranges,
-        locations: targetConfig.locations,
-        personnummer: targetConfig.personnummer
-      },
-      automation_settings: {
-        max_cycles: 100,
-        cycle_delay: 10000,
-        refresh_interval: 30,
-        timeout: 1800000,
-        retry_attempts: 3
+    if (sessionError) {
+      // Try to stop the VPS job if session creation failed
+      try {
+        await fetch(`${VPS_SERVER_URL}/api/v1/booking/stop`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${VPS_AUTH_TOKEN}`
+          },
+          body: JSON.stringify({ job_id: vpsResult.job_id })
+        });
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup VPS job after session error:', cleanupError);
       }
-    };
-
-    console.log('🚀 Triggering automation...');
-    console.log('Payload preview:', {
-      user_id: triggerPayload.user_id,
-      session_id: triggerPayload.session_id,
-      exam: triggerPayload.config.exam,
-      license_type: triggerPayload.config.license_type
-    });
-
-    // Call Trigger.dev
-    const triggerResponse = await fetch('https://api.trigger.dev/v3/runs', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${triggerSecretKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        taskIdentifier: 'trafikverket-booking-advanced',
-        payload: triggerPayload
-      })
-    });
-
-    console.log('📡 Trigger response status:', triggerResponse.status);
-    console.log('📡 Trigger response ok:', triggerResponse.ok);
-
-    if (!triggerResponse.ok) {
-      const errorText = await triggerResponse.text();
-      console.error('❌ Trigger.dev error:', errorText);
-      
-      await authenticatedClient
-        .from('booking_sessions')
-        .update({
-          status: 'error',
-          error_message: 'Failed to start automation: ' + errorText,
-          booking_details: {
-            stage: 'error',
-            message: '❌ Fel vid start av automatisering',
-            timestamp: new Date().toISOString(),
-            triggerError: errorText
-          }
-        })
-        .eq('id', session.id);
-
-      return new Response(JSON.stringify({ 
-        error: 'Failed to trigger automation: ' + errorText
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      throw sessionError;
     }
 
-    const triggerData = await triggerResponse.json();
-    console.log('✅ Trigger response data:', triggerData);
-
-    // Update session with trigger run ID
-    await authenticatedClient
-      .from('booking_sessions')
-      .update({
-        status: 'browser_starting',
-        booking_details: {
-          trigger_run_id: triggerData.id,
-          stage: 'browser_starting',
-          message: '🌍 Startar webbläsare...',
-          timestamp: new Date().toISOString(),
-          automation_type: 'advanced'
+    // Broadcast real-time update
+    await supabaseClient
+      .channel(`booking-${user.id}`)
+      .send({
+        type: 'broadcast',
+        event: 'status_update',
+        payload: {
+          session_id: session.id,
+          job_id: vpsResult.job_id,
+          status: 'starting',
+          message: '🚀 Automatisk bokning startad!',
+          progress: 10
         }
-      })
-      .eq('id', session.id);
+      });
 
-    console.log('🎉 SUCCESS - Automation started:', {
+    console.log('Booking session created:', {
       sessionId: session.id,
-      triggerRunId: triggerData.id,
-      configId: targetConfigId
+      jobId: vpsResult.job_id,
+      userId: user.id
     });
 
-    return new Response(JSON.stringify({ 
-      success: true, 
+    return new Response(JSON.stringify({
+      success: true,
       session_id: session.id,
-      trigger_run_id: triggerData.id,
-      automation_type: 'advanced',
-      message: 'Automation started successfully'
+      job_id: vpsResult.job_id,
+      message: 'Booking automation started successfully'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
