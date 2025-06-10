@@ -20,12 +20,20 @@ serve(async (req) => {
     // Get Supabase environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://kqemgnbqjrqepzkigfcx.supabase.co';
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxZW1nbmJxanJxZXB6a2lnZmN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyMTQ4MDEsImV4cCI6MjA2NDc5MDgwMX0.tnPomyWLMseJX0GlrUeO63Ig9GRZSTh1O1Fi2p9q8mc';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
     console.log('✅ Environment variables loaded');
     
-    // Create Supabase client
+    // Create Supabase client for auth (uses anon key)
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
     console.log('✅ Supabase client created');
+
+    // Create service client for database operations (bypasses RLS)
+    const serviceClient = supabaseServiceKey 
+      ? createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } })
+      : supabaseClient; // Fallback to anon client if service key not available
+    
+    console.log('✅ Service client created:', !!supabaseServiceKey ? 'with SERVICE_ROLE' : 'fallback to ANON');
 
     // Get and validate JWT
     const authHeader = req.headers.get('Authorization');
@@ -83,7 +91,7 @@ serve(async (req) => {
 
     // Check subscription (relaxed for testing)
     try {
-      const { data: subscription, error: subError } = await supabaseClient
+      const { data: subscription, error: subError } = await serviceClient
         .from('subscriptions')
         .select('*')
         .eq('user_id', data.user.id)
@@ -106,7 +114,7 @@ serve(async (req) => {
     try {
       console.log('Creating booking session...');
       
-      const { data: session, error: sessionError } = await supabaseClient
+      const { data: session, error: sessionError } = await serviceClient
         .from('booking_sessions')
         .insert({
           user_id: data.user.id,
@@ -133,7 +141,7 @@ serve(async (req) => {
 
       // Broadcast real-time update
       try {
-        await supabaseClient
+        await serviceClient
           .channel(`booking-${data.user.id}`)
           .send({
             type: 'broadcast',
