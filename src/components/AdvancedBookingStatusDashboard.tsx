@@ -1,18 +1,20 @@
 
 import React, { useState, useEffect } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
-import { Play, Square, RotateCcw, Activity } from 'lucide-react';
 import QRCodeDisplay from './booking/QRCodeDisplay';
 import LiveUpdatesLog from './booking/LiveUpdatesLog';
+import ConnectionStatus from './booking/ConnectionStatus';
+import DebugInformation from './booking/DebugInformation';
+import StatusDisplaySection from './booking/StatusDisplaySection';
+import MetricsGrid from './booking/MetricsGrid';
+import ControlButtons from './booking/ControlButtons';
 import { BookingSession, LogEntry } from './booking/types';
 import { getBookingDetails } from './booking/utils';
+import { statusMessages } from './booking/BookingStatusMessages';
 
 interface AdvancedBookingStatusDashboardProps {
   configId: string;
@@ -32,27 +34,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
   const [slotsFound, setSlotsFound] = useState(0);
   const [showQRCode, setShowQRCode] = useState(false);
   const [qrCodeData, setQrCodeData] = useState<string>('');
-
-  // Enhanced status mapping
-  const statusMessages = {
-    'initializing': { emoji: '🚀', text: 'Startar automatisering...', progress: 5 },
-    'browser_starting': { emoji: '🌍', text: 'Startar webbläsare...', progress: 10 },
-    'navigating': { emoji: '🌐', text: 'Navigerar till Trafikverket...', progress: 15 },
-    'cookies_accepted': { emoji: '🍪', text: 'Accepterade cookies', progress: 20 },
-    'logging_in': { emoji: '🔐', text: 'Startar inloggning...', progress: 25 },
-    'bankid_waiting': { emoji: '📱', text: 'Väntar på BankID...', progress: 30 },
-    'login_success': { emoji: '✅', text: 'Inloggning lyckades!', progress: 40 },
-    'selecting_locations': { emoji: '📍', text: 'Väljer provplatser...', progress: 45 },
-    'locations_confirmed': { emoji: '✅', text: 'Alla provplatser valda', progress: 50 },
-    'searching': { emoji: '🔄', text: 'Söker lediga tider...', progress: 60 },
-    'searching_times': { emoji: '🔍', text: 'Analyserar tillgängliga tider...', progress: 70 },
-    'times_found': { emoji: '📅', text: 'Hittade lediga tider!', progress: 75 },
-    'booking_time': { emoji: '⏰', text: 'Bokar vald tid...', progress: 85 },
-    'booking_complete': { emoji: '🎉', text: 'Bokning genomförd!', progress: 100 },
-    'completed': { emoji: '🎉', text: 'Automatisering klar!', progress: 100 },
-    'error': { emoji: '❌', text: 'Fel uppstod', progress: 0 },
-    'cancelled': { emoji: '⏹️', text: 'Stoppad av användare', progress: 0 }
-  };
 
   // Real-time subscription
   useEffect(() => {
@@ -194,11 +175,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
 
   const startAdvancedBooking = async () => {
     console.log('🚀 Starting advanced booking automation...');
-    console.log('📋 Debug info:', {
-      user: user?.id,
-      configId: configId,
-      subscribed: subscribed
-    });
 
     if (!subscribed) {
       toast({
@@ -209,19 +185,10 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       return;
     }
 
-    if (!user) {
+    if (!user || !configId) {
       toast({
-        title: "Inloggning krävs",
-        description: "Du måste vara inloggad för att starta automatisering",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!configId) {
-      toast({
-        title: "Ingen konfiguration vald",
-        description: "Du måste ha en bokningskonfiguration för att starta automatisering",
+        title: "Konfiguration krävs",
+        description: "Du måste vara inloggad och ha en bokningskonfiguration",
         variant: "destructive"
       });
       return;
@@ -234,18 +201,12 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
     setShowQRCode(false);
 
     try {
-      // Get current session for authentication
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session?.access_token) {
-        console.error('❌ Auth session error:', sessionError);
         throw new Error('Authentication session expired. Please refresh and try again.');
       }
 
-      console.log('✅ Authentication session valid');
-      console.log('📤 Calling start-booking with config_id:', configId);
-
-      // Call Edge Function with explicit data
       const response = await fetch(`https://kqemgnbqjrqepzkigfcx.supabase.co/functions/v1/start-booking`, {
         method: 'POST',
         headers: {
@@ -259,32 +220,22 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         })
       });
 
-      console.log('📥 Function response status:', response.status);
-      console.log('📥 Function response ok:', response.ok);
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Function error response:', errorText);
         throw new Error(`Edge Function error (${response.status}): ${errorText}`);
       }
 
       const data = await response.json();
-      console.log('📥 Function response data:', data);
 
       if (data?.error) {
-        console.error('❌ Function returned error:', data.error);
         throw new Error(data.error);
       }
 
       if (data?.success) {
-        console.log('✅ Automation started successfully');
         toast({
           title: "🚀 Automatisering startad",
           description: "Avancerad automatisering har startats framgångsrikt.",
         });
-      } else {
-        console.error('❌ Unexpected response format:', data);
-        throw new Error('Unexpected response from server');
       }
     } catch (error) {
       console.error('💥 Error starting automation:', error);
@@ -293,12 +244,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       
       if (error.message?.includes('Authentication')) {
         errorMessage = 'Autentiseringsfel. Vänligen logga in igen.';
-      } else if (error.message?.includes('booking configuration')) {
-        errorMessage = 'Ingen bokningskonfiguration hittades. Skapa en först.';
-      } else if (error.message?.includes('subscription')) {
-        errorMessage = 'Prenumerationsproblem. Kontrollera din prenumeration.';
-      } else if (error.message?.includes('Trigger.dev')) {
-        errorMessage = 'Automatiseringstjänsten är inte tillgänglig just nu.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -346,133 +291,35 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
 
   return (
     <div className="space-y-6">
-      {/* Connection Status */}
-      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-        <div className="flex items-center space-x-2">
-          <Activity className={`h-4 w-4 ${isConnected ? 'text-green-600' : 'text-gray-400'}`} />
-          <span className="text-sm font-medium">
-            {isConnected ? 'Ansluten till realtidsuppdateringar' : 'Ansluter...'}
-          </span>
-        </div>
-        <Badge variant={isConnected ? 'default' : 'secondary'}>
-          {isConnected ? 'Live' : 'Offline'}
-        </Badge>
-      </div>
+      <ConnectionStatus isConnected={isConnected} />
+      
+      <DebugInformation 
+        userId={user?.id}
+        configId={configId}
+        subscribed={subscribed}
+        session={session}
+      />
 
-      {/* Debug Information */}
-      <div className="p-4 bg-blue-50 rounded-lg">
-        <h4 className="font-medium text-blue-900 mb-2">Debug Information</h4>
-        <div className="text-sm text-blue-800 space-y-1">
-          <div>User ID: {user?.id || 'Not logged in'}</div>
-          <div>Config ID: {configId || 'Not provided'}</div>
-          <div>Subscribed: {subscribed ? 'Yes' : 'No'}</div>
-          <div>Current Session: {session?.id || 'None'}</div>
-        </div>
-      </div>
+      <StatusDisplaySection currentStatus={currentStatus} session={session} />
+      
+      <MetricsGrid 
+        cycleCount={cycleCount}
+        slotsFound={slotsFound}
+        logs={logs}
+        session={session}
+      />
 
-      {/* Status Display */}
-      <div className="bg-white p-6 rounded-lg border">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-3">
-            <span className="text-3xl">{currentStatus.emoji}</span>
-            <div>
-              <h3 className="text-lg font-semibold">{currentStatus.text}</h3>
-              {session?.started_at && (
-                <p className="text-sm text-gray-600">
-                  Startad: {new Date(session.started_at).toLocaleString('sv-SE')}
-                </p>
-              )}
-            </div>
-          </div>
-          <Badge className={`${session?.status === 'completed' ? 'bg-green-600' : session?.status === 'error' ? 'bg-red-600' : 'bg-blue-600'} text-white`}>
-            {session?.status || 'idle'}
-          </Badge>
-        </div>
+      <ControlButtons
+        isActive={!!isActive}
+        isStarting={isStarting}
+        isStopping={isStopping}
+        subscribed={subscribed}
+        configId={configId}
+        session={session}
+        onStart={startAdvancedBooking}
+        onStop={stopAdvancedBooking}
+      />
 
-        {/* Progress Bar */}
-        <div className="space-y-2 mb-4">
-          <div className="flex justify-between text-sm text-gray-600">
-            <span>Framsteg</span>
-            <span>{currentStatus.progress}%</span>
-          </div>
-          <Progress value={currentStatus.progress} className="w-full" />
-        </div>
-
-        {/* Tracking Information */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-          <div className="text-center p-3 bg-gray-50 rounded">
-            <div className="text-2xl font-bold text-blue-600">{cycleCount}</div>
-            <div className="text-sm text-gray-600">Sök-cykler</div>
-          </div>
-          <div className="text-center p-3 bg-gray-50 rounded">
-            <div className="text-2xl font-bold text-green-600">{slotsFound}</div>
-            <div className="text-sm text-gray-600">Tider hittade</div>
-          </div>
-          <div className="text-center p-3 bg-gray-50 rounded">
-            <div className="text-2xl font-bold text-purple-600">{logs.length}</div>
-            <div className="text-sm text-gray-600">Logg-poster</div>
-          </div>
-          <div className="text-center p-3 bg-gray-50 rounded">
-            <div className="text-2xl font-bold text-orange-600">
-              {session?.created_at ? Math.floor((Date.now() - new Date(session.created_at).getTime()) / 60000) : 0}
-            </div>
-            <div className="text-sm text-gray-600">Minuter aktiv</div>
-          </div>
-        </div>
-
-        {/* Control Buttons */}
-        <div className="flex space-x-3">
-          {!isActive ? (
-            <Button 
-              onClick={startAdvancedBooking} 
-              disabled={isStarting || !subscribed || !configId}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {isStarting ? (
-                <>
-                  <Activity className="h-4 w-4 mr-2 animate-spin" />
-                  Startar...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  Starta avancerad automatisering
-                </>
-              )}
-            </Button>
-          ) : (
-            <Button 
-              onClick={stopAdvancedBooking} 
-              disabled={isStopping}
-              variant="destructive"
-            >
-              {isStopping ? (
-                <>
-                  <Activity className="h-4 w-4 mr-2 animate-spin" />
-                  Stoppar...
-                </>
-              ) : (
-                <>
-                  <Square className="h-4 w-4 mr-2" />
-                  Stoppa automatisering
-                </>
-              )}
-            </Button>
-          )}
-          
-          {session && (
-            <Button 
-              variant="outline"
-              onClick={() => window.location.reload()}
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Uppdatera status
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* QR Code Display */}
       {showQRCode && qrCodeData && (
         <QRCodeDisplay 
           qrCode={qrCodeData}
@@ -480,7 +327,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         />
       )}
 
-      {/* Error Display */}
       {session?.status === 'error' && session.error_message && (
         <Alert variant="destructive">
           <AlertDescription>
@@ -489,7 +335,6 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         </Alert>
       )}
 
-      {/* Live Updates Log */}
       <LiveUpdatesLog logs={logs} />
     </div>
   );
