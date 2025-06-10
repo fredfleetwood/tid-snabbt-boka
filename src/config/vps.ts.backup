@@ -10,13 +10,13 @@ export const VPS_CONFIG = {
   // VPS API Endpoints
   endpoints: {
     // Health check endpoint
-    health: '/health',
+    health: '/api/health',
     
     // Booking related endpoints
     booking: {
-      start: '/api/v1/booking/start',
-      stop: '/api/v1/booking/stop',
-      status: '/api/v1/booking/status',
+      start: '/api/booking/start',
+      stop: '/api/booking/stop',
+      status: '/api/booking/status',
       logs: '/api/booking/logs',
     },
     
