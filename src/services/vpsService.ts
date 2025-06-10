@@ -141,7 +141,7 @@ export class VPSService {
     
     try {
       // First try a simple connectivity test
-      const testUrl = VPS_CONFIG.buildUrl('/api/health');
+      const testUrl = VPS_CONFIG.buildUrl('/health');
       console.log('[VPS-SERVICE] Testing connectivity to:', testUrl);
       
       const controller = new AbortController();
