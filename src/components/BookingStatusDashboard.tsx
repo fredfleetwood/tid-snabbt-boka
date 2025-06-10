@@ -119,6 +119,15 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
                 return prev;
               });
             }
+
+            // Start VPS services if we receive VPS job ID via real-time update
+            const newVpsJobId = details.vps_job_id;
+            if (newVpsJobId && newVpsJobId !== vpsJobId && vpsServiceRef.current) {
+              console.log('🔗 Starting VPS services from real-time update, job:', newVpsJobId);
+              setVpsJobId(newVpsJobId);
+              vpsServiceRef.current.startQRPolling(newVpsJobId);
+              vpsServiceRef.current.connectWebSocket(newVpsJobId);
+            }
             
             // Show toast for important status changes
             if (updatedSession.status === 'completed') {
