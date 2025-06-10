@@ -470,16 +470,21 @@ const VPSTestPanel = () => {
                   <p className="text-xs text-gray-600">CPU Usage</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-orange-600">{systemHealth.browser_count}</p>
-                  <p className="text-xs text-gray-600">Browsers</p>
+                  <p className="text-2xl font-bold text-orange-600">{systemHealth.websocket_connections}</p>
+                  <p className="text-xs text-gray-600">WebSocket Connections</p>
                 </div>
               </div>
               <div className="mt-3 text-xs text-gray-500">
                 Status: <span className={`font-medium ${systemHealth.status === 'healthy' ? 'text-green-600' : 'text-red-600'}`}>
                   {systemHealth.status}
                 </span> | 
-                Uptime: {Math.round(systemHealth.uptime / 3600)}h | 
-                Last Check: {new Date(systemHealth.last_check).toLocaleTimeString()}
+                Redis: <span className={systemHealth.redis === 'connected' ? 'text-green-600' : 'text-red-600'}>
+                  {systemHealth.redis}
+                </span> | 
+                Browser: <span className={systemHealth.browser_status === 'available' ? 'text-green-600' : 'text-red-600'}>
+                  {systemHealth.browser_status}
+                </span> | 
+                Last Check: {new Date(systemHealth.timestamp).toLocaleTimeString()}
               </div>
             </div>
           )}
