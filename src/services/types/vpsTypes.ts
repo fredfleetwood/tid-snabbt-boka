@@ -39,15 +39,18 @@ export interface VPSJobStatus {
   completed_at?: string;
 }
 
+// ÄNDRA VPSSystemHealth interface till:
 export interface VPSSystemHealth {
   status: 'healthy' | 'unhealthy';
   timestamp: string;
   active_jobs: number;
+  websocket_connections: number;
+  redis: string;
   memory_usage: number;
   cpu_usage: number;
-  browser_count: number;
-  uptime: number;
-  last_check: string;
+  disk_usage: number;
+  browser_status: string;
+  queue_status: string;
 }
 
 export interface VPSError {
