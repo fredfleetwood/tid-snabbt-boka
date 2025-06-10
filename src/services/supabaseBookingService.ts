@@ -17,15 +17,50 @@ export class SupabaseBookingService {
 
       if (error) {
         console.error('[SUPABASE-BOOKING] Edge Function error:', error);
-        throw new Error(error.message || 'Failed to start booking via Supabase');
+        
+        // FALLBACK: Call VPS directly if Edge Functions not deployed
+        console.log('[SUPABASE-BOOKING] Falling back to direct VPS call...');
+        return await this.startBookingDirectVPS(config);
       }
 
       console.log('[SUPABASE-BOOKING] Booking started successfully:', data);
       return data;
     } catch (error) {
-      console.error('[SUPABASE-BOOKING] Error starting booking:', error);
-      throw error;
+      console.error('[SUPABASE-BOOKING] Error starting booking, trying VPS directly:', error);
+      return await this.startBookingDirectVPS(config);
     }
+  }
+
+  // TEMPORARY: Direct VPS call (fallback)
+  private async startBookingDirectVPS(config: VPSBookingConfig): Promise<VPSJobResponse> {
+    console.log('[SUPABASE-BOOKING] Calling VPS directly:', config);
+    
+    const vpsConfig = {
+      user_id: config.user_id,
+      license_type: config.license_type,
+      exam_type: config.exam,
+      vehicle_language: config.vehicle_language,
+      locations: config.locations,
+      date_ranges: config.date_ranges,
+      personnummer: config.personnummer
+    };
+
+    const response = await fetch('http://87.106.247.92:8080/api/v1/booking/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer test-secret-token-12345'
+      },
+      body: JSON.stringify(vpsConfig)
+    });
+
+    if (!response.ok) {
+      throw new Error(`VPS Error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('[SUPABASE-BOOKING] Direct VPS call successful:', result);
+    return result;
   }
 
   // Stop booking through Supabase Edge Function → VPS Server  
