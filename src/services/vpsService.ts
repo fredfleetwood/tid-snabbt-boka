@@ -1,4 +1,3 @@
-
 import { VPS_CONFIG } from '@/config/vps';
 import {
   VPSBookingConfig,
@@ -338,7 +337,7 @@ export class VPSService {
     }
   }
 
-    // I getSystemHealth() metoden, efter await response.json(), LÄGG TILL mappning:
+  // I getSystemHealth() metoden, efter await response.json(), LÄGG TILL mappning:
   async getSystemHealth(): Promise<VPSSystemHealth> {
     console.log('[VPS-SERVICE] Checking system health');
   
@@ -382,7 +381,10 @@ export class VPSService {
         cpu_usage: data.performance.cpu_usage,
         disk_usage: data.performance.disk_usage,
         browser_status: data.system.browser_status,
-        queue_status: data.system.queue_status
+        queue_status: data.system.queue_status,
+        browser_count: data.system.browser_count || 0,
+        uptime: data.performance.uptime || 0,
+        last_check: data.timestamp
       };
     } catch (error) {
       console.error('[VPS-SERVICE] Error checking system health:', error);
@@ -400,7 +402,10 @@ export class VPSService {
         cpu_usage: 0,
         disk_usage: 0,
         browser_status: 'unavailable',
-        queue_status: 'unhealthy'
+        queue_status: 'unhealthy',
+        browser_count: 0,
+        uptime: 0,
+        last_check: new Date().toISOString()
       };
     }
   }
@@ -596,4 +601,3 @@ export class VPSService {
 
 export const vpsService = new VPSService();
 export default vpsService;
-
