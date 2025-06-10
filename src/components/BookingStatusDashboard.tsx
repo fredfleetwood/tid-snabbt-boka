@@ -254,6 +254,54 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
             vpsServiceRef.current.connectWebSocket(jobId);
           }
         }
+
+        // Additional fallback: Extract VPS job ID from any available response data
+        if (data.success && data.vps_result && !vpsJobId) {
+          // Try to extract from VPS response object structure
+          const fallbackJobId = data.vps_result.job_id || data.vps_result.vps_job_id || data.session_id;
+          if (fallbackJobId && vpsServiceRef.current) {
+            console.log('🔧 Fallback: Starting VPS services with extracted job ID:', fallbackJobId);
+            setVpsJobId(fallbackJobId);
+            vpsServiceRef.current.startQRPolling(fallbackJobId);
+            vpsServiceRef.current.connectWebSocket(fallbackJobId);
+          }
+        }
+
+        // Final fallback: Start VPS polling even without explicit job ID, using response data
+        if (data.success && !data.vps_result?.job_id && !data.job_id && !vpsJobId) {
+          console.log('⚠️ No direct VPS job ID, trying to extract from session...');
+          
+          // Try to poll for a VPS job ID that might come via database update
+          const pollForVPSJobId = async () => {
+            for (let i = 0; i < 10; i++) { // Try for 10 seconds
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              const { data: sessionData } = await supabase
+                .from('booking_sessions')
+                .select('booking_details')
+                .eq('user_id', user.id)
+                .eq('config_id', configId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (sessionData) {
+                const details = getBookingDetails(sessionData.booking_details);
+                const vpsJobId = details.vps_job_id;
+                
+                if (vpsJobId && vpsServiceRef.current) {
+                  console.log('✅ Found VPS job ID via polling:', vpsJobId);
+                  setVpsJobId(vpsJobId);
+                  vpsServiceRef.current.startQRPolling(vpsJobId);
+                  vpsServiceRef.current.connectWebSocket(vpsJobId);
+                  break;
+                }
+              }
+            }
+          };
+          
+          pollForVPSJobId();
+        }
       } else {
         throw new Error(data.error || 'Failed to start booking');
       }
