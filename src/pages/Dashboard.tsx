@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -10,7 +9,6 @@ import { useSubscription } from '@/hooks/useSubscription';
 import DashboardHeader from '@/components/DashboardHeader';
 import SubscriptionCard from '@/components/SubscriptionCard';
 import BookingConfigForm from '@/components/BookingConfigForm';
-import AdvancedBookingStatusDashboard from '@/components/AdvancedBookingStatusDashboard';
 
 interface BookingConfig {
   id: string;
@@ -118,15 +116,6 @@ const Dashboard = () => {
             Configuration Mode
           </h2>
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-1">
-            {activeConfig && (
-              <div className="mb-8">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">
-                  Advanced Simulation Dashboard
-                </h3>
-                <AdvancedBookingStatusDashboard configId={activeConfig.id} />
-              </div>
-            )}
-            
             <BookingConfigForm />
           </div>
         </div>
