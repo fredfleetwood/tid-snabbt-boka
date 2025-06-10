@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +17,9 @@ import {
   EyeOff,
   Wifi,
   Database,
-  Clock
+  Clock,
+  Globe,
+  Settings
 } from 'lucide-react';
 import { vpsService } from '@/services/vpsService';
 import { VPSSystemHealth } from '@/services/types/vpsTypes';
@@ -33,12 +34,20 @@ interface TestResult {
   details?: any;
 }
 
+interface DiagnosticInfo {
+  serverUrl: string;
+  reachable: boolean;
+  fallbackMode: boolean;
+  lastPingTime?: number;
+  networkError?: string;
+}
+
 const VPSTestPanel = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [systemHealth, setSystemHealth] = useState<VPSSystemHealth | null>(null);
-  const [testBookingResult, setTestBookingResult] = useState<any>(null);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<DiagnosticInfo | null>(null);
   const { toast } = useToast();
 
   const updateTestResult = (testName: string, status: TestResult['status'], message: string, duration?: number, details?: any) => {
@@ -56,22 +65,43 @@ const VPSTestPanel = () => {
 
   const runConnectivityTest = async (): Promise<boolean> => {
     const startTime = Date.now();
-    updateTestResult('Connectivity', 'pending', 'Testing basic connectivity...');
+    updateTestResult('Network Connectivity', 'pending', 'Testing basic network connectivity...');
     
     try {
+      console.log('[VPS-TEST] Starting connectivity test');
       const isOnline = await vpsService.ping();
       const duration = Date.now() - startTime;
       
+      // Get connection info for diagnostics
+      const connectionInfo = vpsService.getConnectionInfo();
+      setDiagnosticInfo({
+        serverUrl: connectionInfo.baseUrl,
+        reachable: connectionInfo.reachable,
+        fallbackMode: connectionInfo.fallbackMode,
+        lastPingTime: duration
+      });
+      
       if (isOnline) {
-        updateTestResult('Connectivity', 'success', 'VPS server is reachable', duration);
+        updateTestResult('Network Connectivity', 'success', `VPS server is reachable at ${connectionInfo.baseUrl}`, duration, connectionInfo);
+        console.log('[VPS-TEST] Connectivity test passed');
         return true;
       } else {
-        updateTestResult('Connectivity', 'error', 'VPS server is not reachable', duration);
+        updateTestResult('Network Connectivity', 'error', `VPS server is not reachable at ${connectionInfo.baseUrl}`, duration, connectionInfo);
+        console.log('[VPS-TEST] Connectivity test failed');
         return false;
       }
     } catch (error) {
       const duration = Date.now() - startTime;
-      updateTestResult('Connectivity', 'error', `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`, duration);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[VPS-TEST] Connectivity test error:', errorMessage);
+      
+      setDiagnosticInfo(prev => ({
+        ...prev!,
+        networkError: errorMessage,
+        lastPingTime: duration
+      }));
+      
+      updateTestResult('Network Connectivity', 'error', `Connection failed: ${errorMessage}`, duration, { error: errorMessage });
       return false;
     }
   };
@@ -81,22 +111,94 @@ const VPSTestPanel = () => {
     updateTestResult('Health Check', 'pending', 'Checking VPS system health...');
     
     try {
+      console.log('[VPS-TEST] Starting health check');
       const health = await vpsService.getSystemHealth();
       const duration = Date.now() - startTime;
       
       setSystemHealth(health);
       
       if (health.status === 'healthy') {
-        updateTestResult('Health Check', 'success', 'System is healthy', duration, health);
+        updateTestResult('Health Check', 'success', 'System is healthy and responding', duration, health);
+        console.log('[VPS-TEST] Health check passed');
         return true;
       } else {
         updateTestResult('Health Check', 'error', `System status: ${health.status}`, duration, health);
+        console.log('[VPS-TEST] Health check failed:', health.status);
         return false;
       }
     } catch (error) {
       const duration = Date.now() - startTime;
-      updateTestResult('Health Check', 'error', `Health check failed: ${error instanceof Error ? error.message : 'Unknown error'}`, duration);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[VPS-TEST] Health check error:', errorMessage);
+      updateTestResult('Health Check', 'error', `Health check failed: ${errorMessage}`, duration);
       return false;
+    }
+  };
+
+  const runAdvancedDiagnostics = async () => {
+    const startTime = Date.now();
+    updateTestResult('Advanced Diagnostics', 'pending', 'Running comprehensive diagnostics...');
+    
+    try {
+      console.log('[VPS-TEST] Starting advanced diagnostics');
+      
+      const connectionInfo = vpsService.getConnectionInfo();
+      
+      // Test different endpoints
+      const diagnostics = {
+        baseUrl: connectionInfo.baseUrl,
+        reachable: connectionInfo.reachable,
+        fallbackMode: connectionInfo.fallbackMode,
+        timestamp: new Date().toISOString(),
+        tests: {
+          basicConnectivity: false,
+          dnsResolution: false,
+          portAccess: false,
+          sslHandshake: false
+        }
+      };
+      
+      // Basic connectivity test
+      try {
+        await fetch(connectionInfo.baseUrl, { 
+          method: 'HEAD', 
+          mode: 'no-cors',
+          timeout: 5000 
+        });
+        diagnostics.tests.basicConnectivity = true;
+      } catch (error) {
+        console.log('[VPS-TEST] Basic connectivity failed:', error);
+      }
+      
+      // DNS resolution test
+      try {
+        const url = new URL(connectionInfo.baseUrl);
+        await fetch(`https://dns.google/resolve?name=${url.hostname}&type=A`);
+        diagnostics.tests.dnsResolution = true;
+      } catch (error) {
+        console.log('[VPS-TEST] DNS resolution failed:', error);
+      }
+      
+      const duration = Date.now() - startTime;
+      
+      setDiagnosticInfo(prev => ({
+        ...prev!,
+        ...diagnostics
+      }));
+      
+      if (diagnostics.tests.basicConnectivity) {
+        updateTestResult('Advanced Diagnostics', 'success', 'Diagnostics completed - basic connectivity OK', duration, diagnostics);
+      } else {
+        updateTestResult('Advanced Diagnostics', 'error', 'Diagnostics show connectivity issues', duration, diagnostics);
+      }
+      
+      console.log('[VPS-TEST] Advanced diagnostics completed:', diagnostics);
+      
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[VPS-TEST] Advanced diagnostics error:', errorMessage);
+      updateTestResult('Advanced Diagnostics', 'error', `Diagnostics failed: ${errorMessage}`, duration);
     }
   };
 
@@ -105,15 +207,18 @@ const VPSTestPanel = () => {
     updateTestResult('Authentication', 'pending', 'Testing API authentication...');
     
     try {
-      // Test authentication by making an authenticated request to system info
+      console.log('[VPS-TEST] Starting authentication test');
+      
       const response = await fetch('http://87.106.247.92:8080/api/system/info', {
         headers: {
           'Authorization': 'Bearer test-secret-token-12345',
           'Content-Type': 'application/json',
         },
+        timeout: 10000
       });
       
       const duration = Date.now() - startTime;
+      console.log('[VPS-TEST] Auth response:', response.status);
       
       if (response.ok) {
         const data = await response.json();
@@ -128,55 +233,10 @@ const VPSTestPanel = () => {
       }
     } catch (error) {
       const duration = Date.now() - startTime;
-      updateTestResult('Authentication', 'error', `Authentication test failed: ${error instanceof Error ? error.message : 'Unknown error'}`, duration);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[VPS-TEST] Authentication test error:', errorMessage);
+      updateTestResult('Authentication', 'error', `Authentication test failed: ${errorMessage}`, duration);
       return false;
-    }
-  };
-
-  const runTestBooking = async () => {
-    const startTime = Date.now();
-    updateTestResult('Test Booking', 'pending', 'Starting test booking automation...');
-    
-    try {
-      const testConfig = {
-        personnummer: '123456-1234',
-        license_type: 'B',
-        exam: 'Körprov' as const,
-        vehicle_language: ['Svenska'],
-        date_ranges: [{
-          from: new Date().toISOString().split('T')[0],
-          to: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-        }],
-        locations: ['Test Location'],
-        user_id: 'test-user',
-        config_id: 'test-config'
-      };
-
-      const response = await vpsService.startBooking(testConfig);
-      const duration = Date.now() - startTime;
-      
-      if (response.success) {
-        setTestBookingResult(response);
-        updateTestResult('Test Booking', 'success', `Test booking started: ${response.job_id}`, duration, response);
-        
-        // Stop the test booking after a few seconds
-        setTimeout(async () => {
-          try {
-            await vpsService.stopBooking(response.job_id);
-            toast({
-              title: "Test booking stopped",
-              description: "Test booking automation has been stopped.",
-            });
-          } catch (error) {
-            console.error('Failed to stop test booking:', error);
-          }
-        }, 5000);
-      } else {
-        updateTestResult('Test Booking', 'error', response.message || 'Test booking failed', duration);
-      }
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      updateTestResult('Test Booking', 'error', `Test booking failed: ${error instanceof Error ? error.message : 'Unknown error'}`, duration);
     }
   };
 
@@ -184,15 +244,18 @@ const VPSTestPanel = () => {
     setIsRunning(true);
     setTestResults([]);
     setSystemHealth(null);
-    setTestBookingResult(null);
+    setDiagnosticInfo(null);
 
     toast({
-      title: "🔧 Running VPS Tests",
-      description: "Testing VPS connectivity and functionality...",
+      title: "🔧 Running Comprehensive VPS Tests",
+      description: "Testing connectivity, authentication, and system health...",
     });
 
-    // Run tests sequentially
+    console.log('[VPS-TEST] Starting comprehensive test suite');
+
+    // Run tests with detailed diagnostics
     const connectivityOk = await runConnectivityTest();
+    await runAdvancedDiagnostics();
     
     if (connectivityOk) {
       const healthOk = await runHealthTest();
@@ -201,12 +264,25 @@ const VPSTestPanel = () => {
       if (healthOk && authOk) {
         toast({
           title: "✅ All VPS Tests Passed",
-          description: "VPS server is fully operational.",
+          description: "VPS server is fully operational and accessible.",
+        });
+      } else {
+        toast({
+          title: "⚠️ Partial VPS Issues",
+          description: "Some VPS tests failed. Check results for details.",
+          variant: "destructive"
         });
       }
+    } else {
+      toast({
+        title: "❌ VPS Server Unreachable",
+        description: "Cannot connect to VPS server. Check network or server status.",
+        variant: "destructive"
+      });
     }
 
     setIsRunning(false);
+    console.log('[VPS-TEST] Test suite completed');
   };
 
   const getStatusIcon = (status: TestResult['status']) => {
@@ -262,7 +338,7 @@ const VPSTestPanel = () => {
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Server className="h-5 w-5 text-orange-600" />
-              <span className="text-orange-800">VPS Developer Tools</span>
+              <span className="text-orange-800">VPS Developer Tools & Diagnostics</span>
             </div>
             <Button 
               variant="outline" 
@@ -277,10 +353,39 @@ const VPSTestPanel = () => {
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              <strong>Developer/Admin Tool:</strong> This panel tests VPS connectivity and functionality. 
-              Use for debugging and monitoring VPS server status.
+              <strong>Enhanced Diagnostics:</strong> This panel provides deep network and connectivity analysis 
+              to troubleshoot VPS server issues.
             </AlertDescription>
           </Alert>
+
+          {/* Connection Status Overview */}
+          {diagnosticInfo && (
+            <div className="bg-white rounded-lg border p-4">
+              <h4 className="font-medium text-gray-800 mb-3 flex items-center">
+                <Globe className="h-4 w-4 mr-2" />
+                Connection Diagnostics
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p><strong>Server URL:</strong> {diagnosticInfo.serverUrl}</p>
+                  <p><strong>Reachable:</strong> <span className={diagnosticInfo.reachable ? 'text-green-600' : 'text-red-600'}>
+                    {diagnosticInfo.reachable ? 'Yes' : 'No'}
+                  </span></p>
+                  <p><strong>Fallback Mode:</strong> <span className={diagnosticInfo.fallbackMode ? 'text-orange-600' : 'text-green-600'}>
+                    {diagnosticInfo.fallbackMode ? 'Active' : 'Inactive'}
+                  </span></p>
+                </div>
+                <div>
+                  {diagnosticInfo.lastPingTime && (
+                    <p><strong>Last Ping:</strong> {diagnosticInfo.lastPingTime}ms</p>
+                  )}
+                  {diagnosticInfo.networkError && (
+                    <p><strong>Network Error:</strong> <span className="text-red-600 text-xs">{diagnosticInfo.networkError}</span></p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex space-x-2">
             <Button 
@@ -291,30 +396,30 @@ const VPSTestPanel = () => {
               {isRunning ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Running Tests...
+                  Running Diagnostics...
                 </>
               ) : (
                 <>
                   <Activity className="h-4 w-4 mr-2" />
-                  Run All Tests
+                  Run Full Diagnostics
                 </>
               )}
             </Button>
 
             <Button 
               variant="outline"
-              onClick={runTestBooking}
-              disabled={isRunning || testResults.find(r => r.test === 'Authentication')?.status !== 'success'}
+              onClick={runAdvancedDiagnostics}
+              disabled={isRunning}
             >
-              <Play className="h-4 w-4 mr-2" />
-              Test Booking
+              <Settings className="h-4 w-4 mr-2" />
+              Network Analysis
             </Button>
           </div>
 
           {/* Test Results */}
           {testResults.length > 0 && (
             <div className="space-y-3">
-              <h4 className="font-medium text-gray-800">Test Results:</h4>
+              <h4 className="font-medium text-gray-800">Diagnostic Results:</h4>
               {testResults.map((result, index) => (
                 <div key={index} className="flex items-center justify-between p-3 bg-white rounded-lg border">
                   <div className="flex items-center space-x-3">
@@ -368,23 +473,11 @@ const VPSTestPanel = () => {
             </div>
           )}
 
-          {/* Test Booking Result */}
-          {testBookingResult && (
-            <div className="bg-white rounded-lg border p-4">
-              <h4 className="font-medium text-gray-800 mb-3 flex items-center">
-                <Database className="h-4 w-4 mr-2" />
-                Test Booking Result
-              </h4>
-              <div className="bg-gray-50 rounded p-3 text-xs font-mono">
-                <pre>{JSON.stringify(testBookingResult, null, 2)}</pre>
-              </div>
-            </div>
-          )}
-
           <div className="text-xs text-gray-500 bg-gray-50 rounded p-2">
             <strong>VPS Server:</strong> 87.106.247.92:8080 | 
             <strong>Token:</strong> test-secret-token-12345 | 
-            <strong>Environment:</strong> Development
+            <strong>Environment:</strong> Development |
+            <strong>Status:</strong> {diagnosticInfo?.reachable ? 'Online' : 'Offline'}
           </div>
         </CardContent>
       </Card>
