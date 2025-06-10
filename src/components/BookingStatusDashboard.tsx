@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -12,6 +12,7 @@ import BookingStatusDisplay from './booking/BookingStatusDisplay';
 import BookingControls from './booking/BookingControls';
 import { BookingSession, BookingDetails, LogEntry } from './booking/types';
 import { getBookingDetails } from './booking/utils';
+import { VPSPollingService, VPSJobStatus } from '@/services/vpsPollingService';
 
 interface BookingStatusDashboardProps {
   configId: string;
@@ -26,6 +27,53 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [vpsJobId, setVpsJobId] = useState<string | null>(null);
+  const [qrCodeData, setQrCodeData] = useState<string>('');
+  const [showQRCode, setShowQRCode] = useState(false);
+  
+  // VPS Polling Service
+  const vpsServiceRef = useRef<VPSPollingService | null>(null);
+
+  // Initialize VPS service
+  useEffect(() => {
+    const handleVPSStatusUpdate = (status: VPSJobStatus) => {
+      console.log('🔄 VPS Status Update:', status);
+      
+      // Add log entry for VPS updates
+      if (status.message) {
+        setLogs(prev => {
+          const newLog: LogEntry = {
+            message: status.message!,
+            timestamp: status.timestamp || new Date().toISOString(),
+            stage: status.stage || status.status
+          };
+          
+          const exists = prev.some(log => 
+            log.message === newLog.message && 
+            Math.abs(new Date(log.timestamp).getTime() - new Date(newLog.timestamp).getTime()) < 2000
+          );
+          
+          if (!exists) {
+            return [...prev, newLog].slice(-20);
+          }
+          return prev;
+        });
+      }
+    };
+
+    const handleVPSQRCode = (qrCode: string) => {
+      console.log('📱 VPS QR Code received');
+      setQrCodeData(qrCode);
+      setShowQRCode(true);
+    };
+
+    vpsServiceRef.current = new VPSPollingService(handleVPSStatusUpdate, handleVPSQRCode);
+
+    // Cleanup on unmount
+    return () => {
+      vpsServiceRef.current?.cleanup();
+    };
+  }, []);
 
   // Set up real-time subscription
   useEffect(() => {
@@ -130,6 +178,17 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
             stage: details.stage || data.status
           }]);
         }
+
+        // Resume VPS services if we have a VPS job ID and session is active
+        const vpsJobId = details.vps_job_id || details.job_id;
+        const isSessionActive = data && ['initializing', 'browser_starting', 'navigating', 'logging_in', 'bankid_waiting', 'searching', 'searching_times', 'booking_time'].includes(data.status);
+        
+        if (vpsJobId && isSessionActive && vpsServiceRef.current) {
+          console.log('🔄 Resuming VPS services for existing session:', vpsJobId);
+          setVpsJobId(vpsJobId);
+          vpsServiceRef.current.startQRPolling(vpsJobId);
+          vpsServiceRef.current.connectWebSocket(vpsJobId);
+        }
       }
     };
 
@@ -161,6 +220,19 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
           title: "Bokning startad",
           description: "Automatisk bokning har startats. Följ statusen nedan.",
         });
+
+        // Start VPS services if we have a VPS job ID
+        if (data.vps_result?.job_id || data.job_id) {
+          const jobId = data.vps_result?.job_id || data.job_id;
+          setVpsJobId(jobId);
+          
+          console.log('🔗 Starting VPS services for job:', jobId);
+          
+          if (vpsServiceRef.current) {
+            vpsServiceRef.current.startQRPolling(jobId);
+            vpsServiceRef.current.connectWebSocket(jobId);
+          }
+        }
       } else {
         throw new Error(data.error || 'Failed to start booking');
       }
@@ -200,6 +272,13 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
         title: "Bokning stoppad",
         description: "Den automatiska bokningen har stoppats.",
       });
+
+      // Stop VPS services
+      if (vpsServiceRef.current) {
+        vpsServiceRef.current.cleanup();
+      }
+      setVpsJobId(null);
+      setShowQRCode(false);
     } catch (error) {
       console.error('Error stopping booking:', error);
       toast({
@@ -212,11 +291,10 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
 
   const isActive = session && ['initializing', 'waiting_bankid', 'searching', 'booking'].includes(session.status);
   const bookingDetails = getBookingDetails(session?.booking_details);
-  const showQRCode = session?.status === 'waiting_bankid' && bookingDetails.qr_code;
 
   return (
     <div className="space-y-6">
-      <BookingStatusHeader isConnected={isConnected} />
+      <BookingStatusHeader isConnected={isConnected} vpsJobId={vpsJobId} />
 
       <BookingStatusDisplay session={session}>
         <BookingControls
@@ -230,12 +308,14 @@ const BookingStatusDashboard = ({ configId }: BookingStatusDashboardProps) => {
       </BookingStatusDisplay>
 
       {/* QR Code Display */}
-      {showQRCode && (
+      {showQRCode && qrCodeData && (
         <QRCodeDisplay 
-          qrCode={bookingDetails.qr_code!}
+          qrCode={qrCodeData}
           onRefresh={() => {
-            // Trigger QR code refresh if needed
-            console.log('Refreshing QR code...');
+            console.log('🔄 Refreshing QR code...');
+            if (vpsJobId && vpsServiceRef.current) {
+              vpsServiceRef.current.startQRPolling(vpsJobId, 1000); // Poll more frequently on refresh
+            }
           }}
         />
       )}
