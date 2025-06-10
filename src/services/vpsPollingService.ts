@@ -38,7 +38,7 @@ export class VPSPollingService {
   /**
    * Start polling for QR codes for a specific job
    */
-  async startQRPolling(jobId: string, intervalMs: number = 2000): Promise<void> {
+  async startQRPolling(jobId: string, intervalMs: number = 500): Promise<void> {
     console.log(`🔍 Starting QR polling for job: ${jobId}`);
     
     this.stopQRPolling(); // Stop any existing polling
@@ -59,8 +59,16 @@ export class VPSPollingService {
           
           if (data.qr_code || data.qr_code_base64 || data.image_data) {
             const qrCode = data.image_data || data.qr_code_base64 || data.qr_code;
-            console.log('✅ QR code received');
+            console.log('✅ QR code received - switching to high-speed polling');
             this.onQRCode?.(qrCode);
+            
+            // Switch to ultra-fast polling when QR codes are actively being generated
+            if (intervalMs > 300) {
+              console.log('🚀 Switching to ultra-fast QR polling (300ms)');
+              this.stopQRPolling();
+              setTimeout(() => this.startQRPolling(jobId, 300), 100);
+              return;
+            }
           }
 
           // Update status if provided
