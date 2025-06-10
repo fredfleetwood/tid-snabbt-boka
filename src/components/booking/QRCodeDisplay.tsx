@@ -11,13 +11,16 @@ interface QRCodeDisplayProps {
 const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
   const [timeLeft, setTimeLeft] = useState(180); // 3 minutes
   const [isExpired, setIsExpired] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
 
   // Reset timer when new QR code is received
   useEffect(() => {
     if (qrCode) {
-      console.log('🔄 New QR code received, resetting timer');
+      const now = new Date().toLocaleTimeString();
+      console.log('🔄 New QR code received, resetting timer at:', now);
       setTimeLeft(180); // Reset to 3 minutes
       setIsExpired(false); // Reset expired state
+      setLastUpdateTime(now);
     }
   }, [qrCode]);
 
@@ -60,7 +63,29 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
             </p>
           </div>
 
-          {/* QR Code Display */}
+          {/* Status indicators - MOVED OUTSIDE QR CODE */}
+          <div className="flex justify-between items-center bg-white rounded-lg p-3 border border-green-200">
+            <div className="flex items-center space-x-2">
+              <div className="bg-green-500 text-white px-2 py-1 rounded text-xs font-medium">
+                LIVE
+              </div>
+              <span className="text-sm text-green-700">
+                Uppdateras automatiskt
+              </span>
+            </div>
+            <div className="text-right">
+              <div className="bg-green-600 text-white px-2 py-1 rounded text-sm font-mono">
+                {formatTime(timeLeft)}
+              </div>
+              {lastUpdateTime && (
+                <div className="text-xs text-gray-600 mt-1">
+                  Senast: {lastUpdateTime}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* QR Code Display - CLEAN, NO OVERLAYS */}
           <div className="flex justify-center">
             <div className="relative">
               {isExpired ? (
@@ -79,32 +104,38 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
                   </Button>
                 </div>
               ) : (
-                <div className="relative">
+                <div className="bg-white p-2 rounded-lg border-2 border-green-300 shadow-lg">
                   <img 
                     src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`} 
                     alt="BankID QR Code"
-                    className="w-64 h-64 border-2 border-blue-300 rounded-lg object-contain bg-white"
+                    className="w-64 h-64 object-contain"
                     onError={(e) => {
+                      console.error('QR code image failed to load:', qrCode.substring(0, 50) + '...');
                       // Fallback if base64 doesn't work, try direct URL
                       if (!qrCode.startsWith('http')) {
                         e.currentTarget.src = qrCode;
                       }
                     }}
+                    onLoad={() => {
+                      console.log('✅ QR code image loaded successfully');
+                    }}
                   />
-                  
-                  {/* Timer overlay - shows time since last QR update */}
-                  <div className="absolute top-2 right-2 bg-green-600 text-white px-2 py-1 rounded text-sm font-mono">
-                    {formatTime(timeLeft)}
-                  </div>
-                  
-                  {/* Live indicator */}
-                  <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-xs font-medium">
-                    LIVE
-                  </div>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Debug info */}
+          {qrCode && !isExpired && (
+            <div className="bg-gray-50 p-2 rounded text-xs text-gray-600">
+              <div className="font-mono">
+                QR data: {qrCode.substring(0, 50)}...
+              </div>
+              <div>
+                Längd: {qrCode.length} tecken
+              </div>
+            </div>
+          )}
 
           {/* Additional Instructions */}
           <div className="bg-white p-4 rounded-lg border border-blue-200">
@@ -115,9 +146,6 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
               <li>3. Scanna QR-koden ovan</li>
               <li>4. Följ instruktionerna i appen för att logga in</li>
             </ol>
-            <p className="text-xs text-green-600 mt-2 font-medium">
-              ✅ QR-koden uppdateras automatiskt från Trafikverket
-            </p>
           </div>
 
           {/* Refresh Button */}
