@@ -93,7 +93,12 @@ export class VPSPollingService {
               console.log(`🔄 [QR-SAME] Identical QR received (${responseTime}ms response time)`);
             }
           } else {
-            console.log(`⭕ [QR-EMPTY] No QR in response (${responseTime}ms)`);
+            // Check if QR expired or just pending
+            if (data.qr_status === 'expired_or_pending') {
+              console.log(`⏰ [QR-EXPIRED] QR code expired or pending (${responseTime}ms) - waiting for renewal`);
+            } else {
+              console.log(`⭕ [QR-EMPTY] No QR in response (${responseTime}ms)`);
+            }
           }
 
           // Update status if provided
