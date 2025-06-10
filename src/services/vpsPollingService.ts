@@ -57,8 +57,8 @@ export class VPSPollingService {
           const data = await response.json();
           console.log('📱 QR polling response:', data);
           
-          if (data.qr_code || data.qr_code_base64) {
-            const qrCode = data.qr_code_base64 || data.qr_code;
+          if (data.qr_code || data.qr_code_base64 || data.image_data) {
+            const qrCode = data.image_data || data.qr_code_base64 || data.qr_code;
             console.log('✅ QR code received');
             this.onQRCode?.(qrCode);
           }
