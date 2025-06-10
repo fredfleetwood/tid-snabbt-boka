@@ -288,30 +288,34 @@ const BookingConfigForm = () => {
   const handleToggleActive = async () => {
     if (!savedConfig) return;
 
-    const result = await secureSubmit(
-      { configId: savedConfig.id, is_active: !savedConfig.is_active },
-      async (data) => {
-        const { error } = await supabase
-          .from('booking_configs')
-          .update({ is_active: data.is_active })
-          .eq('id', data.configId);
+    if (!savedConfig.is_active) {
+      // If activating, call the full start booking process
+      await handleStartBooking();
+    } else {
+      // If deactivating, just stop the booking
+      const result = await secureSubmit(
+        { configId: savedConfig.id, is_active: false },
+        async (data) => {
+          const { error } = await supabase
+            .from('booking_configs')
+            .update({ is_active: data.is_active })
+            .eq('id', data.configId);
 
-        if (error) throw error;
-        return { ...savedConfig, is_active: data.is_active };
-      },
-      {
-        rateLimitKey: `booking_toggle_${user?.id}`
+          if (error) throw error;
+          return { ...savedConfig, is_active: data.is_active };
+        },
+        {
+          rateLimitKey: `booking_toggle_${user?.id}`
+        }
+      );
+
+      if (result.success) {
+        setSavedConfig(result.data);
+        toast({
+          title: "Bokning stoppad",
+          description: "Automatisk bokning har stoppats"
+        });
       }
-    );
-
-    if (result.success) {
-      setSavedConfig(result.data);
-      toast({
-        title: result.data.is_active ? "Bokning startad" : "Bokning stoppad",
-        description: result.data.is_active 
-          ? "Automatisk bokning är nu aktiv" 
-          : "Automatisk bokning har stoppats"
-      });
     }
   };
 
