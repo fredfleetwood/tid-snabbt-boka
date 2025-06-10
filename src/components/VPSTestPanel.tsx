@@ -158,13 +158,18 @@ const VPSTestPanel = () => {
         }
       };
       
-      // Basic connectivity test
+      // Basic connectivity test with proper timeout using AbortController
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
         await fetch(connectionInfo.baseUrl, { 
           method: 'HEAD', 
           mode: 'no-cors',
-          timeout: 5000 
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         diagnostics.tests.basicConnectivity = true;
       } catch (error) {
         console.log('[VPS-TEST] Basic connectivity failed:', error);
@@ -209,14 +214,18 @@ const VPSTestPanel = () => {
     try {
       console.log('[VPS-TEST] Starting authentication test');
       
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
       const response = await fetch('http://87.106.247.92:8080/api/system/info', {
         headers: {
           'Authorization': 'Bearer test-secret-token-12345',
           'Content-Type': 'application/json',
         },
-        timeout: 10000
+        signal: controller.signal
       });
       
+      clearTimeout(timeoutId);
       const duration = Date.now() - startTime;
       console.log('[VPS-TEST] Auth response:', response.status);
       
