@@ -382,9 +382,6 @@ export class VPSService {
         disk_usage: data.performance.disk_usage,
         browser_status: data.system.browser_status,
         queue_status: data.system.queue_status,
-        browser_count: data.system.browser_count || 0,
-        uptime: data.performance.uptime || 0,
-        last_check: data.timestamp
       };
     } catch (error) {
       console.error('[VPS-SERVICE] Error checking system health:', error);
@@ -403,9 +400,6 @@ export class VPSService {
         disk_usage: 0,
         browser_status: 'unavailable',
         queue_status: 'unhealthy',
-        browser_count: 0,
-        uptime: 0,
-        last_check: new Date().toISOString()
       };
     }
   }

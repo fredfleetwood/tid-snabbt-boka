@@ -49,6 +49,9 @@ export interface VPSSystemHealth {
   disk_usage: number;
   browser_status: string;
   queue_status: string;
+  browser_count: number;
+  uptime: number;
+  last_check: string;
 }
 
 export interface VPSError {
