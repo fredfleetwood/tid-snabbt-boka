@@ -10,7 +10,6 @@ max_rows = 1000
 
 [auth]
 enabled = true
-port = 54324
 site_url = "http://localhost:5173"
 additional_redirect_urls = ["https://lovable.dev"]
 jwt_expiry = 3600
@@ -40,5 +39,4 @@ verify_jwt = true
 
 [storage]
 enabled = true
-port = 54323
 file_size_limit = "50MiB"
