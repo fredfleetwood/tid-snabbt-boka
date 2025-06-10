@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSecureForm } from '@/hooks/useSecureForm';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseBookingService } from '@/services/supabaseBookingService';
 import ConfigurationSummary from './ConfigurationSummary';
 import PersonalInfoSection from './booking/PersonalInfoSection';
 import LicenseTestSection from './booking/LicenseTestSection';
@@ -25,6 +26,12 @@ const BookingConfigForm = () => {
   const [savedConfig, setSavedConfig] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  
+  // Real-time booking state
+  const [bookingStatus, setBookingStatus] = useState<string>('idle');
+  const [bookingProgress, setBookingProgress] = useState<number>(0);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -46,6 +53,46 @@ const BookingConfigForm = () => {
       loadSavedConfig();
     }
   }, [user]);
+
+  // Set up real-time subscription for booking updates
+  useEffect(() => {
+    if (!user || !jobId) return;
+
+    const subscription = supabaseBookingService.setupRealtimeSubscription(
+      user.id,
+      // Handle status updates
+      (payload) => {
+        setBookingStatus(payload.status || 'unknown');
+        setBookingProgress(payload.progress || 0);
+        
+        // Show toast for important status changes
+        if (payload.status === 'completed') {
+          toast({
+            title: "Bokning genomförd!",
+            description: "Din körprovstid har bokats framgångsrikt",
+          });
+        } else if (payload.status === 'failed') {
+          toast({
+            title: "Bokning misslyckades",
+            description: payload.message || "Ett fel uppstod under bokningsprocessen",
+            variant: "destructive"
+          });
+        }
+      },
+      // Handle QR code updates
+      (qrCode) => {
+        setQrCode(qrCode);
+        toast({
+          title: "Ny QR-kod",
+          description: "Scanna QR-koden med din BankID-app",
+        });
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user, jobId, toast]);
 
   // Save form data to localStorage when it changes
   useEffect(() => {
@@ -195,33 +242,45 @@ const BookingConfigForm = () => {
       return;
     }
 
-    const result = await secureSubmit(
-      { configId: savedConfig.id, is_active: true },
-      async (data) => {
-        const { error } = await supabase
-          .from('booking_configs')
-          .update({ is_active: data.is_active })
-          .eq('id', data.configId);
+    try {
+      // First, activate the config in database
+      const { error } = await supabase
+        .from('booking_configs')
+        .update({ is_active: true })
+        .eq('id', savedConfig.id);
 
-        if (error) throw error;
-        return { ...savedConfig, is_active: data.is_active };
-      },
-      {
-        rateLimitKey: `booking_toggle_${user?.id}`,
-        validationType: 'custom',
-        customValidator: (data) => ({
-          isValid: Boolean(data.configId),
-          errors: data.configId ? [] : ['Invalid configuration ID'],
-          sanitizedData: data
-        })
-      }
-    );
+      if (error) throw error;
 
-    if (result.success) {
-      setSavedConfig(result.data);
+      // Then start the actual booking automation via Supabase → VPS
+      const bookingConfig = {
+        user_id: user!.id,
+        config_id: savedConfig.id,
+        personnummer: savedConfig.personnummer,
+        license_type: savedConfig.license_type,
+        exam: savedConfig.exam,
+        vehicle_language: savedConfig.vehicle_language,
+        locations: savedConfig.locations,
+        date_ranges: savedConfig.date_ranges
+      };
+
+      const result = await supabaseBookingService.startBooking(bookingConfig);
+      
+      // Update local state
+      setSavedConfig({ ...savedConfig, is_active: true });
+      setJobId(result.job_id);
+      setBookingStatus('starting');
+      
       toast({
         title: "Bokning startad!",
-        description: "Automatisk bokning är nu aktiv för din konfiguration"
+        description: `Automatisk bokning startad via Supabase! Job ID: ${result.job_id}`,
+      });
+      
+    } catch (error) {
+      console.error('Error starting booking:', error);
+      toast({
+        title: "Fel vid start av bokning",
+        description: error instanceof Error ? error.message : "Ett okänt fel uppstod",
+        variant: "destructive"
       });
     }
   };
