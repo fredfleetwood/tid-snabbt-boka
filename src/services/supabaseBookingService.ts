@@ -10,14 +10,22 @@ export class SupabaseBookingService {
     try {
       const { data, error } = await supabase.functions.invoke('start-booking', {
         body: { 
-          user_id: config.user_id, 
-          config 
+          user_id: config.user_id,
+          config_id: config.config_id,
+          config: {
+            personnummer: config.personnummer,
+            license_type: config.license_type,
+            exam: config.exam, // Will be mapped to exam_type by Edge Function
+            vehicle_language: config.vehicle_language,
+            locations: config.locations,
+            date_ranges: config.date_ranges
+          }
         }
       });
 
       if (error) {
         console.error('[SUPABASE-BOOKING] Edge Function error:', error);
-        console.log('[SUPABASE-BOOKING] 🎭 DEMO MODE: Edge Functions not deployed yet');
+        console.log('[SUPABASE-BOOKING] 🎭 DEMO MODE: Edge Function failed, using demo response');
         return this.getDemoResponse();
       }
 
@@ -25,7 +33,7 @@ export class SupabaseBookingService {
       return data;
     } catch (error) {
       console.error('[SUPABASE-BOOKING] Error starting booking:', error);
-      console.log('[SUPABASE-BOOKING] 🎭 DEMO MODE: Edge Functions not deployed yet');
+      console.log('[SUPABASE-BOOKING] 🎭 DEMO MODE: Exception occurred, using demo response');
       return this.getDemoResponse();
     }
   }

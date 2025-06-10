@@ -145,7 +145,7 @@ serve(async (req) => {
     const vpsConfig = {
       user_id: user.id,
       config_id: config_id,
-      personnummer: config?.personnummer,
+      personal_number: config?.personnummer,
       license_type: config?.license_type,
       exam_type: config?.exam,
       vehicle_language: config?.vehicle_language,
