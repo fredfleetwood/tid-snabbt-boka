@@ -139,6 +139,85 @@ serve(async (req) => {
 
       console.log('✅ Booking session created:', session.id);
 
+      // Now call VPS server to start the actual automation
+      let vpsSuccess = false;
+      let vpsJobId = session.booking_details.job_id;
+      let vpsResult = null;
+
+      try {
+        console.log('🚀 Starting VPS automation...');
+        
+        // Prepare VPS request
+        const vpsConfig = {
+          user_id: data.user.id,
+          config_id: config_id,
+          personal_number: config.personnummer,
+          license_type: config.license_type,
+          exam_type: config.exam,
+          vehicle_language: config.vehicle_language,
+          locations: config.locations,
+          date_ranges: config.date_ranges,
+          webhook_url: `${supabaseUrl}/functions/v1/vps-webhook`
+        };
+
+        console.log('VPS request config:', vpsConfig);
+
+        const vpsResponse = await fetch('http://87.106.247.92:8080/api/v1/booking/start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-secret-token-12345'
+          },
+          body: JSON.stringify(vpsConfig)
+        });
+
+        if (vpsResponse.ok) {
+          vpsResult = await vpsResponse.json();
+          vpsJobId = vpsResult?.job_id || session.booking_details.job_id;
+          vpsSuccess = true;
+          
+          console.log('✅ VPS automation started:', vpsResult);
+          
+          // Update session with real VPS job ID
+          await serviceClient
+            .from('booking_sessions')
+            .update({
+              booking_details: {
+                ...session.booking_details,
+                vps_job_id: vpsResult?.job_id,
+                vps_response: vpsResult,
+                stage: 'automation_started',
+                message: '🚀 Automatisering startad på VPS server!',
+                timestamp: new Date().toISOString()
+              }
+            })
+            .eq('id', session.id);
+            
+        } else {
+          const errorText = await vpsResponse.text();
+          console.warn('⚠️ VPS server failed:', vpsResponse.status, errorText);
+          throw new Error(`VPS server error: ${vpsResponse.status} ${errorText}`);
+        }
+        
+      } catch (vpsError) {
+        console.warn('⚠️ VPS integration failed:', vpsError);
+        vpsSuccess = false;
+        
+        // Update session with VPS error
+        await serviceClient
+          .from('booking_sessions')
+          .update({
+            booking_details: {
+              ...session.booking_details,
+              vps_error: vpsError.message,
+              stage: 'vps_failed',
+              message: '⚠️ VPS fel - session sparad i testläge',
+              timestamp: new Date().toISOString()
+            }
+          })
+          .eq('id', session.id);
+      }
+
       // Broadcast real-time update
       try {
         await serviceClient
@@ -148,11 +227,12 @@ serve(async (req) => {
             event: 'status_update',
             payload: {
               session_id: session.id,
-              job_id: session.booking_details.job_id,
-              status: 'starting',
-              message: '🚀 Automatisk bokning startad via databas!',
-              progress: 10,
-              test_mode: true
+              job_id: vpsJobId,  // Use VPS job ID if available
+              status: vpsSuccess ? 'automation_started' : 'vps_failed',
+              message: vpsSuccess ? '🚀 Automatisering startad på VPS!' : '⚠️ VPS integration failed',
+              progress: vpsSuccess ? 20 : 5,
+              vps_success: vpsSuccess,
+              test_mode: !vpsSuccess
             }
           });
         console.log('✅ Real-time update broadcasted');
@@ -163,12 +243,16 @@ serve(async (req) => {
       // Return success response
       return new Response(JSON.stringify({
         success: true,
-        job_id: session.booking_details.job_id,
+        job_id: vpsJobId,  // Use VPS job ID if available
         session_id: session.id,
-        message: '🚀 Booking session created successfully!',
+        message: vpsSuccess 
+          ? '🚀 Full automation started successfully!' 
+          : '🚀 Session created, VPS integration in fallback mode',
         user_id: data.user.id,
         database_operations: true,
-        next_step: 'Add VPS integration'
+        vps_integration: vpsSuccess,
+        vps_result: vpsSuccess && vpsResult ? vpsResult : null,
+        status: vpsSuccess ? 'PRODUCTION' : 'FALLBACK'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

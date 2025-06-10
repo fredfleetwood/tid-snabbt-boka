@@ -7,9 +7,10 @@ interface DebugInformationProps {
   configId: string;
   subscribed: boolean;
   session: BookingSession | null;
+  vpsJobId?: string | null;
 }
 
-const DebugInformation = ({ userId, configId, subscribed, session }: DebugInformationProps) => {
+const DebugInformation = ({ userId, configId, subscribed, session, vpsJobId }: DebugInformationProps) => {
   return (
     <div className="p-4 bg-blue-50 rounded-lg">
       <h4 className="font-medium text-blue-900 mb-2">Debug Information</h4>
@@ -18,6 +19,7 @@ const DebugInformation = ({ userId, configId, subscribed, session }: DebugInform
         <div>Config ID: {configId || 'Not provided'}</div>
         <div>Subscribed: {subscribed ? 'Yes' : 'No'}</div>
         <div>Current Session: {session?.id || 'None'}</div>
+        <div>VPS Job ID: {vpsJobId || 'Not connected'}</div>
       </div>
     </div>
   );

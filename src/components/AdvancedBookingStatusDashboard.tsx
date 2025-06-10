@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -15,6 +15,7 @@ import ControlButtons from './booking/ControlButtons';
 import { BookingSession, LogEntry } from './booking/types';
 import { getBookingDetails } from './booking/utils';
 import { statusMessages } from './booking/BookingStatusMessages';
+import { VPSPollingService, VPSJobStatus } from '@/services/vpsPollingService';
 
 interface AdvancedBookingStatusDashboardProps {
   configId: string;
@@ -34,6 +35,63 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
   const [slotsFound, setSlotsFound] = useState(0);
   const [showQRCode, setShowQRCode] = useState(false);
   const [qrCodeData, setQrCodeData] = useState<string>('');
+  const [vpsJobId, setVpsJobId] = useState<string | null>(null);
+  
+  // VPS Polling Service
+  const vpsServiceRef = useRef<VPSPollingService | null>(null);
+
+  // Initialize VPS service
+  useEffect(() => {
+    const handleVPSStatusUpdate = (status: VPSJobStatus) => {
+      console.log('🔄 VPS Status Update:', status);
+      
+      // Update session-like data based on VPS status
+      if (status.stage === 'bankid_waiting' || status.bankid_status === 'waiting') {
+        // Don't change QR display here, let QR polling handle it
+      }
+      
+      // Add log entry for VPS updates
+      if (status.message) {
+        setLogs(prev => {
+          const newLog: LogEntry = {
+            message: status.message!,
+            timestamp: status.timestamp || new Date().toISOString(),
+            stage: status.stage || status.status,
+            cycle: status.progress,
+            operation: 'vps_update'
+          };
+          
+          const exists = prev.some(log => 
+            log.message === newLog.message && 
+            Math.abs(new Date(log.timestamp).getTime() - new Date(newLog.timestamp).getTime()) < 2000
+          );
+          
+          if (!exists) {
+            return [...prev, newLog].slice(-50);
+          }
+          return prev;
+        });
+      }
+      
+      // Update metrics
+      if (status.slots_found !== undefined) {
+        setSlotsFound(status.slots_found);
+      }
+    };
+
+    const handleVPSQRCode = (qrCode: string) => {
+      console.log('📱 VPS QR Code received');
+      setQrCodeData(qrCode);
+      setShowQRCode(true);
+    };
+
+    vpsServiceRef.current = new VPSPollingService(handleVPSStatusUpdate, handleVPSQRCode);
+
+    // Cleanup on unmount
+    return () => {
+      vpsServiceRef.current?.cleanup();
+    };
+  }, []);
 
   // Real-time subscription
   useEffect(() => {
@@ -167,6 +225,17 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
             operation: details.current_operation
           }]);
         }
+
+        // Resume VPS services if we have a VPS job ID and session is active
+        const vpsJobId = details.vps_job_id || details.job_id;
+        const isSessionActive = data && ['initializing', 'browser_starting', 'navigating', 'logging_in', 'bankid_waiting', 'searching', 'searching_times', 'booking_time'].includes(data.status);
+        
+        if (vpsJobId && isSessionActive && vpsServiceRef.current) {
+          console.log('🔄 Resuming VPS services for existing session:', vpsJobId);
+          setVpsJobId(vpsJobId);
+          vpsServiceRef.current.startQRPolling(vpsJobId);
+          vpsServiceRef.current.connectWebSocket(vpsJobId);
+        }
       }
     };
 
@@ -236,6 +305,20 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
           title: "🚀 Automatisering startad",
           description: "Avancerad automatisering har startats framgångsrikt.",
         });
+
+        // Extract VPS job ID and start VPS services
+        if (data.vps_result?.job_id || data.job_id) {
+          const jobId = data.vps_result?.job_id || data.job_id;
+          setVpsJobId(jobId);
+          
+          console.log('🔗 Starting VPS services for job:', jobId);
+          
+          // Start VPS polling and WebSocket
+          if (vpsServiceRef.current) {
+            vpsServiceRef.current.startQRPolling(jobId);
+            vpsServiceRef.current.connectWebSocket(jobId);
+          }
+        }
       }
     } catch (error) {
       console.error('💥 Error starting automation:', error);
@@ -274,6 +357,13 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         title: "⏹️ Automatisering stoppad",
         description: "Automatiseringen har stoppats säkert.",
       });
+
+      // Stop VPS services
+      if (vpsServiceRef.current) {
+        vpsServiceRef.current.cleanup();
+      }
+      setVpsJobId(null);
+      setShowQRCode(false);
     } catch (error) {
       console.error('Error stopping automation:', error);
       toast({
@@ -298,6 +388,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         configId={configId}
         subscribed={subscribed}
         session={session}
+        vpsJobId={vpsJobId}
       />
 
       <StatusDisplaySection currentStatus={currentStatus} session={session} />
@@ -323,7 +414,12 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
       {showQRCode && qrCodeData && (
         <QRCodeDisplay 
           qrCode={qrCodeData}
-          onRefresh={() => console.log('Refreshing QR code...')}
+          onRefresh={() => {
+            console.log('🔄 Refreshing QR code...');
+            if (vpsJobId && vpsServiceRef.current) {
+              vpsServiceRef.current.startQRPolling(vpsJobId, 1000); // Poll more frequently on refresh
+            }
+          }}
         />
       )}
 
