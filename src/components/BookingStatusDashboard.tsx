@@ -418,7 +418,7 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
           onRefresh={() => {
             console.log('🔄 Refreshing QR code...');
             if (vpsJobId && vpsServiceRef.current) {
-              vpsServiceRef.current.startQRPolling(vpsJobId, 200); // BLIXTSNABB polling on refresh
+                                vpsServiceRef.current.startQRPolling(vpsJobId, 1000); // Optimized 1s polling for BankID QR refresh
             }
           }}
         />

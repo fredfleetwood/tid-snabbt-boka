@@ -417,7 +417,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
           onRefresh={() => {
             console.log('🔄 Refreshing QR code...');
             if (vpsJobId && vpsServiceRef.current) {
-              vpsServiceRef.current.startQRPolling(vpsJobId, 1000); // Poll more frequently on refresh
+                                vpsServiceRef.current.startQRPolling(vpsJobId, 1000); // Optimized 1s polling for BankID QR refresh
             }
           }}
         />

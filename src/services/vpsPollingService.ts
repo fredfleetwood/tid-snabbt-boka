@@ -41,9 +41,9 @@ export class VPSPollingService {
   }
 
   /**
-   * Start polling for QR codes for a specific job - FIXED VERSION
+   * Start polling for QR codes for a specific job - OPTIMIZED FOR BANKID 2-SECOND REFRESH
    */
-  async startQRPolling(jobId: string, intervalMs: number = 250): Promise<void> {
+  async startQRPolling(jobId: string, intervalMs: number = 1000): Promise<void> {
     console.log(`🔍 [QR-POLLING] Starting for job: ${jobId} (interval: ${intervalMs}ms)`);
     
     this.stopQRPolling(); // Stop any existing polling
