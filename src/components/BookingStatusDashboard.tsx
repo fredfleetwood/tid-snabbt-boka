@@ -124,7 +124,7 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
             if (newVpsJobId && newVpsJobId !== vpsJobId && vpsServiceRef.current) {
               console.log('🔗 Starting VPS services from real-time update, job:', newVpsJobId);
               setVpsJobId(newVpsJobId);
-              vpsServiceRef.current.startQRPolling(newVpsJobId);
+              vpsServiceRef.current.startSmartQRPolling(newVpsJobId);
               vpsServiceRef.current.connectWebSocket(newVpsJobId);
             }
             
@@ -195,7 +195,7 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
         if (vpsJobId && isSessionActive && vpsServiceRef.current) {
           console.log('🔄 Resuming VPS services for existing session:', vpsJobId);
           setVpsJobId(vpsJobId);
-          vpsServiceRef.current.startQRPolling(vpsJobId);
+          vpsServiceRef.current.startSmartQRPolling(vpsJobId);
           vpsServiceRef.current.connectWebSocket(vpsJobId);
         }
       }
@@ -249,7 +249,7 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
           console.log('🔗 Starting VPS services for job:', jobId);
           
           if (vpsServiceRef.current) {
-            vpsServiceRef.current.startQRPolling(jobId);
+            vpsServiceRef.current.startSmartQRPolling(jobId);
             vpsServiceRef.current.connectWebSocket(jobId);
           }
         }
@@ -261,7 +261,7 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
           if (fallbackJobId && vpsServiceRef.current) {
             console.log('🔧 Fallback: Starting VPS services with extracted job ID:', fallbackJobId);
             setVpsJobId(fallbackJobId);
-            vpsServiceRef.current.startQRPolling(fallbackJobId);
+            vpsServiceRef.current.startSmartQRPolling(fallbackJobId);
             vpsServiceRef.current.connectWebSocket(fallbackJobId);
           }
         }
@@ -291,7 +291,7 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
                 if (vpsJobId && vpsServiceRef.current) {
                   console.log('✅ Found VPS job ID via polling:', vpsJobId);
                   setVpsJobId(vpsJobId);
-                  vpsServiceRef.current.startQRPolling(vpsJobId);
+                  vpsServiceRef.current.startSmartQRPolling(vpsJobId);
                   vpsServiceRef.current.connectWebSocket(vpsJobId);
                   break;
                 }
@@ -416,9 +416,9 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
           qrCode={qrCodeData}
           jobId={vpsJobId || undefined}
           onRefresh={() => {
-            console.log('🔄 Refreshing QR code...');
+            console.log('🔄 Manual QR refresh requested...');
             if (vpsJobId && vpsServiceRef.current) {
-                                vpsServiceRef.current.startQRPolling(vpsJobId, 1000); // Optimized 1s polling for BankID QR refresh
+              vpsServiceRef.current.refreshQRCode(vpsJobId);
             }
           }}
         />

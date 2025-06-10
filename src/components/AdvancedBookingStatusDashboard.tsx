@@ -232,7 +232,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
         if (vpsJobId && isSessionActive && vpsServiceRef.current) {
           console.log('🔄 Resuming VPS services for existing session:', vpsJobId);
           setVpsJobId(vpsJobId);
-          vpsServiceRef.current.startQRPolling(vpsJobId);
+          vpsServiceRef.current.startSmartQRPolling(vpsJobId);
           vpsServiceRef.current.connectWebSocket(vpsJobId);
         }
       }
@@ -314,7 +314,7 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
           
           // Start VPS polling and WebSocket
           if (vpsServiceRef.current) {
-            vpsServiceRef.current.startQRPolling(jobId);
+            vpsServiceRef.current.startSmartQRPolling(jobId);
             vpsServiceRef.current.connectWebSocket(jobId);
           }
         }
@@ -415,9 +415,9 @@ const AdvancedBookingStatusDashboard = ({ configId }: AdvancedBookingStatusDashb
           qrCode={qrCodeData}
           jobId={vpsJobId || undefined}
           onRefresh={() => {
-            console.log('🔄 Refreshing QR code...');
+            console.log('🔄 Manual QR refresh requested...');
             if (vpsJobId && vpsServiceRef.current) {
-                                vpsServiceRef.current.startQRPolling(vpsJobId, 1000); // Optimized 1s polling for BankID QR refresh
+              vpsServiceRef.current.refreshQRCode(vpsJobId);
             }
           }}
         />
