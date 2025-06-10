@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
@@ -415,6 +414,7 @@ const BookingStatusDashboard = ({ configId, config }: BookingStatusDashboardProp
       {showQRCode && qrCodeData && (
         <QRCodeDisplay 
           qrCode={qrCodeData}
+          jobId={vpsJobId || undefined}
           onRefresh={() => {
             console.log('🔄 Refreshing QR code...');
             if (vpsJobId && vpsServiceRef.current) {
