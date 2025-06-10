@@ -337,7 +337,6 @@ export class VPSService {
     }
   }
 
-  // I getSystemHealth() metoden, efter await response.json(), LÄGG TILL mappning:
   async getSystemHealth(): Promise<VPSSystemHealth> {
     console.log('[VPS-SERVICE] Checking system health');
   
@@ -370,18 +369,18 @@ export class VPSService {
       
       console.log('[VPS-SERVICE] Health data received:', data);
       
-      // MAPPA BACKEND RESPONSE TILL FRONTEND FORMAT:
+      // Map backend response to frontend format
       return {
-        status: data.status,
+        status: data.status === 'healthy' ? 'healthy' : 'unhealthy',
         timestamp: data.timestamp,
-        active_jobs: data.jobs.active_jobs,
-        websocket_connections: data.connections.websocket_connections,
-        redis: data.system.redis_status,
-        memory_usage: data.performance.memory_usage,
-        cpu_usage: data.performance.cpu_usage,
-        disk_usage: data.performance.disk_usage,
-        browser_status: data.system.browser_status,
-        queue_status: data.system.queue_status,
+        active_jobs: data.jobs?.active_jobs || 0,
+        websocket_connections: data.connections?.websocket_connections || 0,
+        redis: data.system?.redis_status || 'disconnected',
+        memory_usage: data.performance?.memory_usage || 0,
+        cpu_usage: data.performance?.cpu_usage || 0,
+        disk_usage: data.performance?.disk_usage || 0,
+        browser_status: data.system?.browser_status || 'unavailable',
+        queue_status: data.system?.queue_status || 'unhealthy',
       };
     } catch (error) {
       console.error('[VPS-SERVICE] Error checking system health:', error);
