@@ -9,11 +9,10 @@ interface QRCodeDisplayProps {
 }
 
 const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
-  const [timeElapsed, setTimeElapsed] = useState(0); // Count UP from last update
   const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
   const [qrImageKey, setQrImageKey] = useState(0); // Force image re-render
 
-  // Reset timer when new QR code is received
+  // Reset when new QR code is received
   useEffect(() => {
     if (qrCode) {
       const now = new Date();
@@ -22,35 +21,16 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
       console.log('📱 QR Data length:', qrCode.length);
       console.log('📱 QR Data preview:', qrCode.substring(0, 100) + '...');
       
-      setTimeElapsed(0); // Reset to 0 (start counting UP)
       setLastUpdateTime(timeString);
       setQrImageKey(prev => prev + 1); // Force image re-render
     }
   }, [qrCode]);
 
-  // Timer that counts UP from last QR update
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeElapsed(prev => prev + 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   // Add timestamp to prevent browser caching
   const getImageSrc = (qrData: string) => {
     const baseData = qrData.startsWith('data:') ? qrData : `data:image/png;base64,${qrData}`;
-    // Add timestamp to force refresh (but keep as data URL)
     return baseData;
   };
-
-  const isStale = timeElapsed > 60; // QR is stale after 1 minute
 
   return (
     <Card className="bg-blue-50 border-blue-200">
@@ -72,33 +52,21 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
             </p>
           </div>
 
-          {/* Status indicators - Shows time SINCE last update */}
-          <div className="flex justify-between items-center bg-white rounded-lg p-3 border border-green-200">
+          {/* Simple LIVE status indicator - NO COUNTDOWN */}
+          <div className="flex justify-center items-center bg-white rounded-lg p-3 border border-green-200">
             <div className="flex items-center space-x-2">
-              <div className={`text-white px-2 py-1 rounded text-xs font-medium ${
-                isStale ? 'bg-orange-500' : 'bg-green-500'
-              }`}>
-                {isStale ? 'STALE' : 'LIVE'}
-              </div>
-              <span className="text-sm text-green-700">
-                {isStale ? 'QR-kod kan vara gammal' : 'Senaste från Trafikverket'}
-              </span>
-            </div>
-            <div className="text-right">
-              <div className={`text-white px-2 py-1 rounded text-sm font-mono ${
-                isStale ? 'bg-orange-600' : 'bg-green-600'
-              }`}>
-                +{formatTime(timeElapsed)}
+              <div className="bg-green-500 text-white px-3 py-2 rounded text-sm font-medium">
+                ✅ LIVE från Trafikverket
               </div>
               {lastUpdateTime && (
-                <div className="text-xs text-gray-600 mt-1">
-                  Senast: {lastUpdateTime}
-                </div>
+                <span className="text-sm text-gray-600">
+                  Senast uppdaterad: {lastUpdateTime}
+                </span>
               )}
             </div>
           </div>
 
-          {/* QR Code Display - FORCED RE-RENDER with key */}
+          {/* QR Code Display - CLEAN, NO OVERLAYS */}
           <div className="flex justify-center">
             <div className="relative">
               {!qrCode ? (
@@ -132,7 +100,7 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
             </div>
           </div>
 
-          {/* Debug info - MORE DETAILED */}
+          {/* Debug info - SIMPLIFIED */}
           {qrCode && (
             <div className="bg-gray-50 p-2 rounded text-xs text-gray-600 space-y-1">
               <div className="font-mono">
@@ -141,12 +109,6 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
               <div className="flex justify-between">
                 <span>Längd: {qrCode.length} tecken</span>
                 <span>Image Key: {qrImageKey}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tid sedan uppdatering: {formatTime(timeElapsed)}</span>
-                <span className={isStale ? 'text-orange-600 font-bold' : 'text-green-600'}>
-                  {isStale ? '⚠️ GAMMAL' : '✅ FRESH'}
-                </span>
               </div>
             </div>
           )}
@@ -161,7 +123,7 @@ const QRCodeDisplay = ({ qrCode, onRefresh }: QRCodeDisplayProps) => {
               <li>4. Följ instruktionerna i appen för att logga in</li>
             </ol>
             <p className="text-xs text-green-600 mt-2">
-              ✅ QR-koden uppdateras var 30-60 sekund från Trafikverket
+              ✅ QR-koden uppdateras automatiskt från Trafikverket
             </p>
           </div>
 
