@@ -110,9 +110,10 @@ serve(async (req) => {
         .from('booking_sessions')
         .insert({
           user_id: data.user.id,
-          job_id: testJobId,
+          config_id: config_id,
           status: 'starting',
           booking_details: {
+            job_id: testJobId,
             config: config,
             stage: 'initializing',
             message: '🚀 Startar automatisk bokning via Supabase...',
@@ -139,7 +140,7 @@ serve(async (req) => {
             event: 'status_update',
             payload: {
               session_id: session.id,
-              job_id: testJobId,
+              job_id: session.booking_details.job_id,
               status: 'starting',
               message: '🚀 Automatisk bokning startad via databas!',
               progress: 10,
@@ -154,7 +155,7 @@ serve(async (req) => {
       // Return success response
       return new Response(JSON.stringify({
         success: true,
-        job_id: testJobId,
+        job_id: session.booking_details.job_id,
         session_id: session.id,
         message: '🚀 Booking session created successfully!',
         user_id: data.user.id,
