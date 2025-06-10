@@ -7,6 +7,12 @@ export class SupabaseBookingService {
   async startBooking(config: VPSBookingConfig): Promise<VPSJobResponse> {
     console.log('[SUPABASE-BOOKING] Starting booking via Supabase Edge Function:', config);
     
+    // Always try fallback first for testing (Edge Functions not deployed yet)
+    console.log('[SUPABASE-BOOKING] Edge Functions not deployed yet, using direct VPS call...');
+    return await this.startBookingDirectVPS(config);
+
+    // TODO: Uncomment when Edge Functions are deployed
+    /*
     try {
       const { data, error } = await supabase.functions.invoke('start-booking', {
         body: { 
@@ -29,6 +35,7 @@ export class SupabaseBookingService {
       console.error('[SUPABASE-BOOKING] Error starting booking, trying VPS directly:', error);
       return await this.startBookingDirectVPS(config);
     }
+    */
   }
 
   // TEMPORARY: Direct VPS call (fallback)
