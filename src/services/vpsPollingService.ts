@@ -19,12 +19,13 @@ export interface VPSWebSocketMessage {
 }
 
 export class VPSPollingService {
-  private baseUrl = 'http://87.106.247.92:8080';
-  private authToken = 'Bearer test-secret-token-12345';
+  private baseUrl = 'https://kqemgnbqjrqepzkigfcx.supabase.co/functions/v1/vps-proxy';
+  private authToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxZW1nbmJxanJxZXB6a2lnZmN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyMTQ4MDEsImV4cCI6MjA2NDc5MDgwMX0.tnPomyWLMseJX0GlrUeO63Ig9GRZSTh1O1Fi2p9q8mc';
   private pollingInterval: NodeJS.Timeout | null = null;
   private wsConnection: WebSocket | null = null;
   private onStatusUpdate?: (status: VPSJobStatus) => void;
   private onQRCode?: (qrCode: string) => void;
+  private isHTTPS: boolean;
 
   constructor(
     onStatusUpdate?: (status: VPSJobStatus) => void,
@@ -44,9 +45,10 @@ export class VPSPollingService {
     
     const pollQRCode = async () => {
       try {
-        const response = await fetch(`${this.baseUrl}/api/v1/booking/${jobId}/qr`, {
+        const response = await fetch(`${this.baseUrl}?job_id=${jobId}&action=qr`, {
           headers: {
-            'Authorization': this.authToken,
+            'Authorization': `Bearer ${this.authToken}`,
+            'apikey': this.authToken,
             'Content-Type': 'application/json'
           }
         });
@@ -90,55 +92,16 @@ export class VPSPollingService {
   }
 
   /**
-   * Connect to WebSocket for live updates
+   * Connect to WebSocket for live updates (DISABLED for HTTPS compatibility)
    */
   connectWebSocket(jobId: string): void {
-    console.log(`🌐 Connecting to WebSocket for job: ${jobId}`);
+    console.log(`🌐 WebSocket disabled for HTTPS compatibility. Using polling for job: ${jobId}`);
     
     this.disconnectWebSocket();
     
-    const wsUrl = `ws://87.106.247.92:8080/ws/${jobId}`;
-    
-    try {
-      this.wsConnection = new WebSocket(wsUrl);
-      
-      this.wsConnection.onopen = () => {
-        console.log('✅ WebSocket connected');
-      };
-      
-      this.wsConnection.onmessage = (event) => {
-        try {
-          const message: VPSWebSocketMessage = JSON.parse(event.data);
-          console.log('📡 WebSocket message:', message);
-          
-          if (message.type === 'status_update' || message.type === 'progress') {
-            this.onStatusUpdate?.(message.data);
-          } else if (message.type === 'qr_code' && message.data.qr_code) {
-            this.onQRCode?.(message.data.qr_code);
-          }
-        } catch (error) {
-          console.error('❌ WebSocket message parsing error:', error);
-        }
-      };
-      
-      this.wsConnection.onerror = (error) => {
-        console.error('❌ WebSocket error:', error);
-      };
-      
-      this.wsConnection.onclose = (event) => {
-        console.log('🔌 WebSocket closed:', event.code, event.reason);
-        
-        // Auto-reconnect after 3 seconds if not manually closed
-        if (event.code !== 1000) {
-          setTimeout(() => {
-            console.log('🔄 Reconnecting WebSocket...');
-            this.connectWebSocket(jobId);
-          }, 3000);
-        }
-      };
-    } catch (error) {
-      console.error('❌ WebSocket connection error:', error);
-    }
+    // WebSocket disabled due to HTTPS mixed content restrictions
+    // QR polling will handle all updates
+    return;
   }
 
   /**
@@ -157,9 +120,10 @@ export class VPSPollingService {
    */
   async getJobStatus(jobId: string): Promise<VPSJobStatus | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/booking/${jobId}/status`, {
+      const response = await fetch(`${this.baseUrl}?job_id=${jobId}&action=status`, {
         headers: {
-          'Authorization': this.authToken,
+          'Authorization': `Bearer ${this.authToken}`,
+          'apikey': this.authToken,
           'Content-Type': 'application/json'
         }
       });
