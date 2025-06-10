@@ -24,6 +24,8 @@ const SupabaseBookingExample = () => {
   // Example booking configuration
   const exampleConfig = {
     user_id: user?.id || '',
+    config_id: 'example-config-id',
+    personnummer: '1234567890',
     license_type: 'B',
     exam: 'Körprov',
     vehicle_language: ['Ja, manuell'],
@@ -141,4 +143,4 @@ const SupabaseBookingExample = () => {
   );
 };
 
-export default SupabaseBookingExample; 
+export default SupabaseBookingExample;
