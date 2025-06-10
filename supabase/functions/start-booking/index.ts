@@ -108,12 +108,48 @@ serve(async (req) => {
       user_id?: string; 
       config?: any;
     };
-    console.log('Request data:', { config_id, user_id });
+    console.log('Request data:', { config_id, user_id, config });
+
+    // Detailed validation with specific error messages
+    if (!user_id) {
+      console.error('❌ Missing required field: user_id');
+      return new Response(JSON.stringify({ 
+        error: 'Missing required field: user_id',
+        received_data: requestBody
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!config_id) {
+      console.error('❌ Missing required field: config_id');
+      return new Response(JSON.stringify({ 
+        error: 'Missing required field: config_id',
+        received_data: requestBody
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!config) {
+      console.error('❌ Missing required field: config');
+      return new Response(JSON.stringify({ 
+        error: 'Missing required field: config',
+        received_data: requestBody
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (user_id !== user.id) {
-      console.error('❌ User ID mismatch');
+      console.error('❌ User ID mismatch:', { sent: user_id, authenticated: user.id });
       return new Response(JSON.stringify({ 
-        error: 'User ID mismatch'
+        error: 'User ID mismatch',
+        sent_user_id: user_id,
+        authenticated_user_id: user.id
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

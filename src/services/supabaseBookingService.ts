@@ -8,8 +8,9 @@ export class SupabaseBookingService {
     console.log('[SUPABASE-BOOKING] Starting booking via Supabase Edge Function:', config);
     
     try {
+      // BookingConfigForm sends data in flat structure, so we pass it directly
       const { data, error } = await supabase.functions.invoke('start-booking', {
-        body: { 
+        body: {
           user_id: config.user_id,
           config_id: config.config_id,
           config: {
