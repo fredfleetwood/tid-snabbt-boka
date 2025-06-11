@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +24,19 @@ const ActionButtonsSection = ({
   setIsEditing,
   populateFormFromConfig
 }: ActionButtonsSectionProps) => {
+  
+  // Debug logging to see what props we receive
+  console.log('[ACTION-BUTTONS] 🔍 Component props received:');
+  console.log('[ACTION-BUTTONS] 📊 loading:', loading);
+  console.log('[ACTION-BUTTONS] 📊 savedConfig:', savedConfig);
+  console.log('[ACTION-BUTTONS] 📊 subscribed:', subscribed);
+  console.log('[ACTION-BUTTONS] 📊 showPreview:', showPreview);
+  
+  // Check if the "Starta bokning" button should be visible
+  const shouldShowStartButton = savedConfig && subscribed;
+  console.log('[ACTION-BUTTONS] 🔍 Should show "Starta bokning" button:', shouldShowStartButton);
+  console.log('[ACTION-BUTTONS] 🔍 Button disabled condition:', loading || (savedConfig?.is_active));
+  
   return (
     <Card>
       <CardContent className="pt-6">
@@ -43,7 +55,7 @@ const ActionButtonsSection = ({
             Förhandsgranska
           </Button>
 
-          {savedConfig && subscribed && (
+          {shouldShowStartButton && (
             <Button
               type="button"
               variant="default"

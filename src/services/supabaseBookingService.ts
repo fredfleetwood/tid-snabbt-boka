@@ -5,35 +5,52 @@ export class SupabaseBookingService {
   
   // Start booking through Supabase Edge Function → VPS Server
   async startBooking(config: VPSBookingConfig): Promise<VPSJobResponse> {
-    console.log('[SUPABASE-BOOKING] Starting booking via Supabase Edge Function:', config);
+    console.log('[SUPABASE-BOOKING] 🚀 Starting booking via Supabase Edge Function');
+    console.log('[SUPABASE-BOOKING] 📊 Config received:', config);
     
     try {
+      console.log('[SUPABASE-BOOKING] 🔄 Step 1: Preparing Edge Function request...');
+      
+      const requestBody = {
+        user_id: config.user_id,
+        config_id: config.config_id,
+        config: {
+          personnummer: config.personnummer,
+          license_type: config.license_type,
+          exam: config.exam, // Will be mapped to exam_type by Edge Function
+          vehicle_language: config.vehicle_language,
+          locations: config.locations,
+          date_ranges: config.date_ranges
+        }
+      };
+      
+      console.log('[SUPABASE-BOOKING] 📊 Request body prepared:', requestBody);
+      console.log('[SUPABASE-BOOKING] 🔄 Step 2: Calling start-booking Edge Function...');
+      
       // BookingConfigForm sends data in flat structure, so we pass it directly
       const { data, error } = await supabase.functions.invoke('start-booking', {
-        body: {
-          user_id: config.user_id,
-          config_id: config.config_id,
-          config: {
-            personnummer: config.personnummer,
-            license_type: config.license_type,
-            exam: config.exam, // Will be mapped to exam_type by Edge Function
-            vehicle_language: config.vehicle_language,
-            locations: config.locations,
-            date_ranges: config.date_ranges
-          }
-        }
+        body: requestBody
       });
 
+      console.log('[SUPABASE-BOOKING] 📨 Edge Function response received');
+      console.log('[SUPABASE-BOOKING] 📊 Response data:', data);
+      console.log('[SUPABASE-BOOKING] ❓ Response error:', error);
+
       if (error) {
-        console.error('[SUPABASE-BOOKING] Edge Function error:', error);
+        console.error('[SUPABASE-BOOKING] ❌ Edge Function error details:', error);
         console.log('[SUPABASE-BOOKING] 🎭 DEMO MODE: Edge Function failed, using demo response');
         return this.getDemoResponse();
       }
 
-      console.log('[SUPABASE-BOOKING] Booking started successfully:', data);
+      console.log('[SUPABASE-BOOKING] ✅ Booking started successfully via Edge Function:', data);
       return data;
     } catch (error) {
-      console.error('[SUPABASE-BOOKING] Error starting booking:', error);
+      console.error('[SUPABASE-BOOKING] ❌ Exception in startBooking:', error);
+      console.error('[SUPABASE-BOOKING] ❌ Exception details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        error: error
+      });
       console.log('[SUPABASE-BOOKING] 🎭 DEMO MODE: Exception occurred, using demo response');
       return this.getDemoResponse();
     }

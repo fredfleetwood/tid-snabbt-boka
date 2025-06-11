@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -224,7 +223,13 @@ const BookingConfigForm = () => {
   };
 
   const handleStartBooking = async () => {
+    console.log('🚀 [DEBUG] handleStartBooking called');
+    console.log('🚀 [DEBUG] subscribed:', subscribed);
+    console.log('🚀 [DEBUG] savedConfig:', savedConfig);
+    console.log('🚀 [DEBUG] user:', user);
+
     if (!subscribed) {
+      console.log('❌ [DEBUG] No subscription - showing error toast');
       toast({
         title: "Aktivt abonnemang krävs",
         description: "Du behöver en aktiv prenumeration för att starta automatisk bokning",
@@ -234,6 +239,7 @@ const BookingConfigForm = () => {
     }
 
     if (!savedConfig) {
+      console.log('❌ [DEBUG] No saved config - showing error toast');
       toast({
         title: "Spara konfiguration först",
         description: "Du måste spara din konfiguration innan du kan starta bokning",
@@ -242,15 +248,23 @@ const BookingConfigForm = () => {
       return;
     }
 
+    console.log('✅ [DEBUG] All checks passed, starting booking process...');
+
     try {
+      console.log('🔄 [DEBUG] Step 1: Updating database to set is_active: true');
       // First, activate the config in database
       const { error } = await supabase
         .from('booking_configs')
         .update({ is_active: true })
         .eq('id', savedConfig.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ [DEBUG] Database update failed:', error);
+        throw error;
+      }
+      console.log('✅ [DEBUG] Database updated successfully');
 
+      console.log('🔄 [DEBUG] Step 2: Preparing booking config for Supabase service');
       // Then start the actual booking automation via Supabase → VPS
       const bookingConfig = {
         user_id: user!.id,
@@ -263,20 +277,35 @@ const BookingConfigForm = () => {
         date_ranges: savedConfig.date_ranges
       };
 
+      console.log('🔄 [DEBUG] Booking config prepared:', bookingConfig);
+      console.log('🔄 [DEBUG] Step 3: Calling supabaseBookingService.startBooking...');
+
       const result = await supabaseBookingService.startBooking(bookingConfig);
       
+      console.log('✅ [DEBUG] supabaseBookingService.startBooking result:', result);
+
       // Update local state
       setSavedConfig({ ...savedConfig, is_active: true });
       setJobId(result.job_id);
       setBookingStatus('starting');
       
+      console.log('✅ [DEBUG] Local state updated - job_id:', result.job_id);
+
       toast({
         title: "Bokning startad!",
         description: `Automatisk bokning startad via Supabase! Job ID: ${result.job_id}`,
       });
       
+      console.log('🎉 [DEBUG] handleStartBooking completed successfully!');
+      
     } catch (error) {
-      console.error('Error starting booking:', error);
+      console.error('❌ [DEBUG] Error in handleStartBooking:', error);
+      console.error('❌ [DEBUG] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        error: error
+      });
+      
       toast({
         title: "Fel vid start av bokning",
         description: error instanceof Error ? error.message : "Ett okänt fel uppstod",
