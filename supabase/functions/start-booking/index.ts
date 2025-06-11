@@ -185,7 +185,7 @@ serve(async (req: Request) => {
       let vpsResult: VPSResponse | null = null;
 
       try {
-        console.log('🚀 Starting VPS automation...');
+        console.log('🚀 Starting VPS automation via internal proxy...');
         
         // Prepare VPS request
         const vpsConfig = {
@@ -202,21 +202,31 @@ serve(async (req: Request) => {
 
         console.log('VPS request config:', vpsConfig);
 
-        const vpsResponse = await fetch('http://87.106.247.92:8000/api/v1/booking/start', {
+        // Instead of calling VPS directly, call our own vps-proxy Edge Function with action=start
+        // This avoids external network restrictions
+        const vpsProxyUrl = `${supabaseUrl}/functions/v1/vps-proxy?action=start`;
+        const vpsResponse = await fetch(vpsProxyUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer test-secret-token-12345'
+            'Authorization': authHeader
           },
           body: JSON.stringify(vpsConfig)
         });
 
-        if (vpsResponse.ok) {
-          vpsResult = await vpsResponse.json() as VPSResponse;
+        if (!vpsResponse.ok) {
+          const errorText = await vpsResponse.text();
+          throw new Error(`VPS proxy error: ${vpsResponse.status} - ${errorText}`);
+        }
+
+        const vpsData = await vpsResponse.json();
+
+        if (vpsData && vpsData.job_id) {
+          vpsResult = vpsData as VPSResponse;
           vpsJobId = vpsResult?.job_id || typedSession.booking_details?.job_id || testJobId;
           vpsSuccess = true;
           
-          console.log('✅ VPS automation started:', vpsResult);
+          console.log('✅ VPS automation started via internal proxy:', vpsResult);
           
           // Update session with real VPS job ID
           await serviceClient
@@ -227,16 +237,14 @@ serve(async (req: Request) => {
                 vps_job_id: vpsResult?.job_id,
                 vps_response: vpsResult,
                 stage: 'automation_started',
-                message: '🚀 Automatisering startad på VPS server!',
+                message: '🚀 Automatisering startad via intern proxy!',
                 timestamp: new Date().toISOString()
               }
             })
             .eq('id', typedSession.id);
             
         } else {
-          const errorText = await vpsResponse.text();
-          console.warn('⚠️ VPS server failed:', vpsResponse.status, errorText);
-          throw new Error(`VPS server error: ${vpsResponse.status} ${errorText}`);
+          throw new Error(`VPS booking function returned unsuccessful result: ${JSON.stringify(vpsData)}`);
         }
         
       } catch (vpsError: any) {
@@ -251,7 +259,7 @@ serve(async (req: Request) => {
               ...typedSession.booking_details,
               vps_error: vpsError?.message || 'Unknown VPS error',
               stage: 'vps_failed',
-              message: '⚠️ VPS fel - session sparad i testläge',
+              message: '⚠️ VPS fel - använder intern proxy fallback',
               timestamp: new Date().toISOString()
             }
           })

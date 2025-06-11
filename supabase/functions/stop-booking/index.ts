@@ -80,28 +80,33 @@ serve(async (req) => {
       userId: user.id
     });
 
-    // Call VPS server to stop the booking job
+    // Call VPS server to stop the booking job via internal vps-proxy
     let vpsStopSuccess = false;
     if (session.job_id) {
       try {
-        const vpsResponse = await fetch(`${VPS_SERVER_URL}/api/v1/booking/stop`, {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const authHeader = req.headers.get('Authorization');
+        const vpsProxyUrl = `${supabaseUrl}/functions/v1/vps-proxy?action=stop`;
+        
+        const vpsResponse = await fetch(vpsProxyUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${VPS_AUTH_TOKEN}`
+            'Authorization': authHeader || ''
           },
           body: JSON.stringify({ job_id: session.job_id })
         });
 
         if (vpsResponse.ok) {
           const vpsResult = await vpsResponse.json();
-          console.log('VPS stop response:', vpsResult);
+          console.log('VPS stop response via proxy:', vpsResult);
           vpsStopSuccess = true;
         } else {
-          console.warn('VPS stop failed:', vpsResponse.status, vpsResponse.statusText);
+          const errorText = await vpsResponse.text();
+          console.warn('VPS stop failed via proxy:', vpsResponse.status, errorText);
         }
       } catch (vpsError) {
-        console.warn('Error calling VPS stop:', vpsError);
+        console.warn('Error calling VPS stop via proxy:', vpsError);
       }
     }
 

@@ -16,8 +16,9 @@ import {
   XCircle,
   Loader2
 } from 'lucide-react';
-import { vpsService } from '@/services/vpsService';
+import { SupabaseBookingService } from '@/services/supabaseBookingService';
 import { VPSSystemHealth } from '@/services/types/vpsTypes';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { VPSErrorHandler } from '@/utils/vpsErrorHandler';
 import LiveAutomationMonitor from '@/components/LiveAutomationMonitor';
@@ -52,6 +53,9 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
     duration: string;
   }>>([]);
   const { toast } = useToast();
+  
+  // Initialize booking service
+  const bookingService = new SupabaseBookingService();
 
   // Handle connection status changes
   const handleConnectionStatusChange = (status: ConnectionStatus) => {
@@ -65,10 +69,11 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
   // Fetch system health with error handling
   const fetchSystemHealth = async () => {
     try {
-      const health = await vpsService.getSystemHealth();
-      setSystemHealth(health);
+      // Note: System health is handled through VPS polling service now
+      // This component focuses on booking automation via Supabase Edge Functions
+      console.log('System health check moved to VPS polling service');
     } catch (error) {
-      // Error already handled by VPSErrorHandler in the service
+      console.warn('System health check error:', error);
       setSystemHealth(null);
     }
   };
@@ -110,7 +115,7 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
         config_id: config.id
       };
 
-      const response = await vpsService.startBooking(vpsConfig);
+      const response = await bookingService.startBooking(vpsConfig);
       
       if (response.success && response.job_id) {
         setActiveJobId(response.job_id);
@@ -168,7 +173,14 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
         return;
       }
 
-      await vpsService.stopBooking(activeJobId);
+      // Stop booking via Supabase Edge Function
+      const { error } = await supabase.functions.invoke('stop-booking', {
+        body: { job_id: activeJobId }
+      });
+      
+      if (error) {
+        throw new Error(error.message || 'Failed to stop booking');
+      }
       setActiveJobId(null);
       toast({
         title: "⏹️ Automatisering stoppad",
