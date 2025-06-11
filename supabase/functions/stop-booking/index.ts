@@ -8,7 +8,7 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
-const VPS_SERVER_URL = 'http://87.106.247.92:8080';
+const VPS_SERVER_URL = 'http://87.106.247.92:8000';
 const VPS_AUTH_TOKEN = 'test-secret-token-12345'; // Use environment variable in production
 
 serve(async (req) => {

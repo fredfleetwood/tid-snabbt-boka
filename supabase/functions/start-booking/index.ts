@@ -1,5 +1,14 @@
+// @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-ignore
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
+
+// Deno global declaration for TypeScript
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,7 +17,35 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
-serve(async (req) => {
+// Type definitions
+interface BookingDetails {
+  job_id: string;
+  config?: any;
+  stage?: string;
+  message?: string;
+  timestamp?: string;
+  test_mode?: boolean;
+  vps_job_id?: string;
+  vps_response?: any;
+  vps_error?: string;
+}
+
+interface BookingSession {
+  id: string;
+  user_id: string;
+  config_id: string;
+  status: string;
+  booking_details: BookingDetails;
+}
+
+interface VPSResponse {
+  job_id?: string;
+  status?: string;
+  message?: string;
+  [key: string]: any;
+}
+
+serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -139,10 +176,13 @@ serve(async (req) => {
 
       console.log('✅ Booking session created:', session.id);
 
+      // Type the session properly
+      const typedSession = session as BookingSession;
+
       // Now call VPS server to start the actual automation
       let vpsSuccess = false;
-      let vpsJobId = session.booking_details.job_id;
-      let vpsResult = null;
+      let vpsJobId: string = typedSession.booking_details?.job_id || testJobId;
+      let vpsResult: VPSResponse | null = null;
 
       try {
         console.log('🚀 Starting VPS automation...');
@@ -162,7 +202,7 @@ serve(async (req) => {
 
         console.log('VPS request config:', vpsConfig);
 
-        const vpsResponse = await fetch('http://87.106.247.92:8080/api/v1/booking/start', {
+        const vpsResponse = await fetch('http://87.106.247.92:8000/api/v1/booking/start', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -172,8 +212,8 @@ serve(async (req) => {
         });
 
         if (vpsResponse.ok) {
-          vpsResult = await vpsResponse.json();
-          vpsJobId = vpsResult?.job_id || session.booking_details.job_id;
+          vpsResult = await vpsResponse.json() as VPSResponse;
+          vpsJobId = vpsResult?.job_id || typedSession.booking_details?.job_id || testJobId;
           vpsSuccess = true;
           
           console.log('✅ VPS automation started:', vpsResult);
@@ -183,7 +223,7 @@ serve(async (req) => {
             .from('booking_sessions')
             .update({
               booking_details: {
-                ...session.booking_details,
+                ...typedSession.booking_details,
                 vps_job_id: vpsResult?.job_id,
                 vps_response: vpsResult,
                 stage: 'automation_started',
@@ -191,7 +231,7 @@ serve(async (req) => {
                 timestamp: new Date().toISOString()
               }
             })
-            .eq('id', session.id);
+            .eq('id', typedSession.id);
             
         } else {
           const errorText = await vpsResponse.text();
@@ -199,7 +239,7 @@ serve(async (req) => {
           throw new Error(`VPS server error: ${vpsResponse.status} ${errorText}`);
         }
         
-      } catch (vpsError) {
+      } catch (vpsError: any) {
         console.warn('⚠️ VPS integration failed:', vpsError);
         vpsSuccess = false;
         
@@ -208,14 +248,14 @@ serve(async (req) => {
           .from('booking_sessions')
           .update({
             booking_details: {
-              ...session.booking_details,
-              vps_error: vpsError.message,
+              ...typedSession.booking_details,
+              vps_error: vpsError?.message || 'Unknown VPS error',
               stage: 'vps_failed',
               message: '⚠️ VPS fel - session sparad i testläge',
               timestamp: new Date().toISOString()
             }
           })
-          .eq('id', session.id);
+          .eq('id', typedSession.id);
       }
 
       // Broadcast real-time update
@@ -226,8 +266,8 @@ serve(async (req) => {
             type: 'broadcast',
             event: 'status_update',
             payload: {
-              session_id: session.id,
-              job_id: vpsJobId,  // Use VPS job ID if available
+              session_id: typedSession.id,
+              job_id: vpsJobId,
               status: vpsSuccess ? 'automation_started' : 'vps_failed',
               message: vpsSuccess ? '🚀 Automatisering startad på VPS!' : '⚠️ VPS integration failed',
               progress: vpsSuccess ? 20 : 5,
@@ -243,8 +283,8 @@ serve(async (req) => {
       // Return success response
       return new Response(JSON.stringify({
         success: true,
-        job_id: vpsJobId,  // Use VPS job ID if available
-        session_id: session.id,
+        job_id: vpsJobId,
+        session_id: typedSession.id,
         message: vpsSuccess 
           ? '🚀 Full automation started successfully!' 
           : '🚀 Session created, VPS integration in fallback mode',
@@ -257,7 +297,7 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
 
-    } catch (dbError) {
+    } catch (dbError: any) {
       console.error('❌ Database operation failed:', dbError);
       
       // Return test success even if DB fails
@@ -267,20 +307,20 @@ serve(async (req) => {
         session_id: `fallback-session-${Date.now()}`,
         message: '⚠️ DB failed but continuing in test mode',
         user_id: data.user.id,
-        database_error: dbError.message,
+        database_error: dbError?.message || 'Unknown database error',
         test_mode: true
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('💥 ERROR:', error);
     
     return new Response(JSON.stringify({ 
-      error: 'Function error: ' + error.message,
-      name: error.name,
-      stack: error.stack?.split('\n').slice(0, 5)
+      error: 'Function error: ' + (error?.message || 'Unknown error'),
+      name: error?.name || 'Unknown',
+      stack: error?.stack?.split('\n').slice(0, 5) || []
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

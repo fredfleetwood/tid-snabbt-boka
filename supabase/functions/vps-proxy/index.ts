@@ -32,10 +32,10 @@ serve(async (req) => {
 
     switch (action) {
       case 'qr':
-        vpsUrl = `http://87.106.247.92:8080/api/v1/booking/${jobId}/qr`;
+        vpsUrl = `http://87.106.247.92:8000/api/v1/booking/${jobId}/qr`;
         break;
       case 'status':
-        vpsUrl = `http://87.106.247.92:8080/api/v1/booking/${jobId}/status`;
+        vpsUrl = `http://87.106.247.92:8000/api/v1/booking/${jobId}/status`;
         break;
       default:
         return new Response(JSON.stringify({ error: 'Invalid action' }), {

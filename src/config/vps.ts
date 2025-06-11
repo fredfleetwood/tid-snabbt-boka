@@ -2,7 +2,7 @@
 // VPS Configuration
 export const VPS_CONFIG = {
   // Base VPS URL
-  VPS_URL: 'http://87.106.247.92:8080',
+  VPS_URL: 'http://87.106.247.92:8000',
   
   // API Token for VPS authentication
   VPS_API_TOKEN: 'test-secret-token-12345',
@@ -35,7 +35,7 @@ export const VPS_CONFIG = {
   
   // Helper function to build full URLs
   buildUrl: (endpoint: string): string => {
-    const baseUrl = 'http://87.106.247.92:8080';
+    const baseUrl = 'http://87.106.247.92:8000';
     return `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
   },
   

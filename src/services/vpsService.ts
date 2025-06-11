@@ -344,7 +344,7 @@ export class VPSService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      const response = await fetch('http://87.106.247.92:8080/health/detailed', {
+      const response = await fetch('http://87.106.247.92:8000/health/detailed', {
         method: 'GET',
         signal: controller.signal,
         headers: {
