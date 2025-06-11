@@ -2,10 +2,41 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-requested-with, cache-control, pragma',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-requested-with, cache-control, pragma, x-trace-id',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
   'Access-Control-Max-Age': '86400',
 };
+
+// Enhanced logging utility for VPS Proxy
+class ProxyLogger {
+  private traceId: string;
+  private stepCounter: number = 0;
+
+  constructor(externalTraceId?: string) {
+    this.traceId = externalTraceId 
+      ? `${externalTraceId}_proxy_${Date.now() % 10000}`
+      : `proxy_trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`🆔 VPS Proxy trace: ${this.traceId}`);
+  }
+
+  async info(operation: string, message: string, data?: any) {
+    this.stepCounter++;
+    const traceInfo = `[${this.traceId.slice(-8)}]`;
+    console.log(`ℹ️ ${traceInfo} [proxy] [${operation}] ${message}`);
+    if (data) console.log(`   Data:`, data);
+  }
+
+  async error(operation: string, message: string, error?: any) {
+    this.stepCounter++;
+    const traceInfo = `[${this.traceId.slice(-8)}]`;
+    console.log(`❌ ${traceInfo} [proxy] [${operation}] ${message}`);
+    if (error) console.log(`   Error:`, error);
+  }
+
+  getTraceId(): string {
+    return this.traceId;
+  }
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -13,16 +44,25 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Initialize logger with potential external trace ID
+  const externalTraceId = req.headers.get('x-trace-id') || undefined;
+  const logger = new ProxyLogger(externalTraceId);
+
   try {
     const url = new URL(req.url);
     const jobId = url.searchParams.get('job_id');
     const action = url.searchParams.get('action') || 'qr';
 
-    console.log(`🔄 VPS Proxy: ${action} for job ${jobId || 'new'}`);
+    await logger.info('proxy-start', `VPS Proxy request: ${action}`, {
+      job_id: jobId,
+      method: req.method,
+      action: action
+    });
 
     let vpsUrl: string;
     let method = 'GET';
-    let body = null;
+    let body: string | null = null;
+    let requestData: any = null;
 
     switch (action) {
       case 'qr':
@@ -46,6 +86,7 @@ serve(async (req) => {
       case 'start':
         // For booking start, we expect POST data in the request body
         if (req.method !== 'POST') {
+          await logger.error('start-wrong-method', 'start action requires POST method');
           return new Response(JSON.stringify({ error: 'start action requires POST method' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -53,9 +94,23 @@ serve(async (req) => {
         }
         try {
           body = await req.text();
+          requestData = JSON.parse(body);
+          
+          // Add trace ID to the request body for VPS server
+          if (requestData && typeof requestData === 'object') {
+            requestData.trace_id = logger.getTraceId();
+            body = JSON.stringify(requestData);
+          }
+          
           vpsUrl = `http://87.106.247.92:8000/api/v1/booking/start`;
           method = 'POST';
+          
+          await logger.info('start-request-prepared', 'Start booking request prepared', {
+            has_trace_id: !!requestData.trace_id,
+            config_keys: requestData ? Object.keys(requestData) : []
+          });
         } catch (e) {
+          await logger.error('start-invalid-body', 'Invalid request body for start action', e);
           return new Response(JSON.stringify({ error: 'Invalid request body for start action' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -95,12 +150,9 @@ serve(async (req) => {
       headers: {
         'Authorization': 'Bearer test-secret-token-12345',
         'Content-Type': 'application/json'
-      }
+      },
+      ...(body && { body })
     };
-
-    if (body) {
-      requestOptions.body = body;
-    }
 
     const vpsResponse = await fetch(vpsUrl, requestOptions);
 

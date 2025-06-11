@@ -24,6 +24,7 @@ import { VPSErrorHandler } from '@/utils/vpsErrorHandler';
 import LiveAutomationMonitor from '@/components/LiveAutomationMonitor';
 import VPSSettingsPanel from '@/components/VPSSettingsPanel';
 import VPSConnectionStatus, { ConnectionStatus } from '@/components/VPSConnectionStatus';
+import { systemLogger } from '@/utils/systemLogger';
 
 interface BookingConfig {
   id: string;
@@ -93,8 +94,17 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
     setIsStarting(true);
     
     try {
+      // Log automation start with enhanced tracing
+      await systemLogger.logUserInteraction('click', 'start-automation-button', {
+        connection_status: connectionStatus,
+        config_id: config.id
+      });
+
       // Check connection first
       if (connectionStatus === 'disconnected') {
+        await systemLogger.error('automation-start-failed', 'VPS server not available', null, {
+          connection_status: connectionStatus
+        });
         throw new Error('VPS server is not available');
       }
 
@@ -115,10 +125,23 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
         config_id: config.id
       };
 
+      // Log booking start with full context
+      await systemLogger.logBookingStart(config.id, config.id, vpsConfig);
+
+      const startTime = Date.now();
       const response = await bookingService.startBooking(vpsConfig);
+      const duration = Date.now() - startTime;
       
       if (response.success && response.job_id) {
         setActiveJobId(response.job_id);
+        
+        // Log successful start
+        await systemLogger.info('automation-started', 'Automation started successfully', {
+          job_id: response.job_id,
+          session_id: (response as any).session_id,
+          connection_status: connectionStatus,
+          trace_id: (response as any).trace_id
+        }, duration);
         
         if (connectionStatus === 'fallback') {
           toast({
@@ -132,10 +155,17 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
           });
         }
       } else {
+        await systemLogger.error('automation-start-failed', 'Booking service returned unsuccessful response', null, {
+          response: response,
+          connection_status: connectionStatus
+        });
         throw new Error(response.message || 'Failed to start automation');
       }
     } catch (error) {
-      console.error('Failed to start automation:', error);
+      await systemLogger.error('automation-start-error', 'Failed to start automation', error, {
+        connection_status: connectionStatus,
+        config_id: config.id
+      });
       
       // Error is already handled by VPSErrorHandler, but we can add specific logic here
       if (connectionStatus === 'fallback') {
@@ -143,11 +173,18 @@ const LiveAutomationSection = ({ config }: LiveAutomationSectionProps) => {
         try {
           const fallbackJobId = `fallback-${Date.now()}`;
           setActiveJobId(fallbackJobId);
+          
+          await systemLogger.info('fallback-mode-activated', 'Fallback mode automation started', {
+            fallback_job_id: fallbackJobId,
+            connection_status: connectionStatus
+          });
+          
           toast({
             title: "⚠️ Fallback-läge aktiverat",
             description: "Automatisering startad med begränsad funktionalitet.",
           });
         } catch (fallbackError) {
+          await systemLogger.error('fallback-mode-failed', 'Fallback mode start failed', fallbackError);
           VPSErrorHandler.handleError(
             fallbackError as Error,
             'Fallback Mode Start'

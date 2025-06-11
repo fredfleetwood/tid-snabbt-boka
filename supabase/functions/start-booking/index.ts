@@ -17,6 +17,110 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// Enhanced logging utility for Edge Functions
+class EdgeFunctionLogger {
+  private traceId: string;
+  private stepCounter: number = 0;
+  private context: any = {};
+  private startTime: number;
+
+  constructor(externalTraceId?: string) {
+    this.traceId = externalTraceId 
+      ? `${externalTraceId}_edge_${Date.now() % 10000}`
+      : `edge_trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    this.startTime = Date.now();
+    console.log(`🆔 Edge function trace: ${this.traceId}`);
+  }
+
+  setContext(context: any) {
+    this.context = { ...this.context, ...context };
+  }
+
+  private async log(level: string, operation: string, message: string, data?: any, duration_ms?: number) {
+    this.stepCounter++;
+    
+    const logEntry = {
+      level,
+      component: 'edge-function',
+      operation,
+      message,
+      timestamp: new Date().toISOString(),
+      trace_id: this.traceId,
+      step_number: this.stepCounter,
+      duration_ms: duration_ms || (Date.now() - this.startTime),
+      data: data || {},
+      ...this.context
+    };
+
+    // Enhanced console output
+    const emoji = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : 'ℹ️';
+    const timestamp = new Date().toLocaleTimeString();
+    const traceInfo = `[${this.traceId.slice(-8)}]`;
+    
+    console.log(`${emoji} [${timestamp}] ${traceInfo} [edge] [${operation}] ${message}`);
+    if (data) {
+      console.log(`   Data:`, data);
+    }
+    if (duration_ms) {
+      console.log(`   Duration: ${duration_ms}ms`);
+    }
+
+    // Send to system logs
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://kqemgnbqjrqepzkigfcx.supabase.co';
+      await fetch(`${supabaseUrl}/functions/v1/system-logs?action=log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(logEntry)
+      });
+    } catch (error) {
+      console.warn('Failed to send log to system-logs:', error);
+    }
+  }
+
+  async info(operation: string, message: string, data?: any, duration_ms?: number) {
+    await this.log('info', operation, message, data, duration_ms);
+  }
+
+  async error(operation: string, message: string, error?: any, data?: any) {
+    await this.log('error', operation, message, {
+      ...data,
+      error_details: error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      } : undefined
+    });
+  }
+
+  async warn(operation: string, message: string, data?: any) {
+    await this.log('warn', operation, message, data);
+  }
+
+  getTraceId(): string {
+    return this.traceId;
+  }
+
+  async logTraceSummary() {
+    const totalDuration = Date.now() - this.startTime;
+    await this.info('trace-summary', 'Edge function trace summary', {
+      trace_id: this.traceId,
+      total_steps: this.stepCounter,
+      total_duration_ms: totalDuration,
+      context: this.context
+    });
+  }
+
+  async logTraceHandoff(targetComponent: string): Promise<string> {
+    await this.info('trace-handoff', `Handing off trace to ${targetComponent}`, {
+      target_component: targetComponent,
+      handoff_trace_id: this.traceId,
+      step_count: this.stepCounter
+    });
+    return this.traceId;
+  }
+}
+
 // Type definitions
 interface BookingDetails {
   job_id: string;
@@ -28,6 +132,7 @@ interface BookingDetails {
   vps_job_id?: string;
   vps_response?: any;
   vps_error?: string;
+  trace_id?: string;
 }
 
 interface BookingSession {
@@ -51,30 +156,39 @@ serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Initialize logger with potential external trace ID
+  const externalTraceId = req.headers.get('x-trace-id') || undefined;
+  const logger = new EdgeFunctionLogger(externalTraceId);
+
   try {
-    console.log('=== START BOOKING WITH DATABASE OPERATIONS ===');
+    await logger.info('function-start', 'Start booking Edge Function initiated');
     
     // Get Supabase environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://kqemgnbqjrqepzkigfcx.supabase.co';
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxZW1nbmJxanJxZXB6a2lnZmN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyMTQ4MDEsImV4cCI6MjA2NDc5MDgwMX0.tnPomyWLMseJX0GlrUeO63Ig9GRZSTh1O1Fi2p9q8mc';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
-    console.log('✅ Environment variables loaded');
+    await logger.info('env-loaded', 'Environment variables loaded', {
+      has_service_key: !!supabaseServiceKey,
+      supabase_url: supabaseUrl
+    });
     
     // Create Supabase client for auth (uses anon key)
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-    console.log('✅ Supabase client created');
-
+    
     // Create service client for database operations (bypasses RLS)
     const serviceClient = supabaseServiceKey 
       ? createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } })
       : supabaseClient; // Fallback to anon client if service key not available
     
-    console.log('✅ Service client created:', !!supabaseServiceKey ? 'with SERVICE_ROLE' : 'fallback to ANON');
+    await logger.info('clients-created', 'Supabase clients created', {
+      using_service_key: !!supabaseServiceKey
+    });
 
     // Get and validate JWT
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      await logger.error('auth-missing', 'No authorization header provided');
       return new Response(JSON.stringify({ error: 'No authorization header' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -85,6 +199,7 @@ serve(async (req: Request) => {
     const { data, error: authError } = await supabaseClient.auth.getUser(token);
     
     if (authError || !data?.user) {
+      await logger.error('auth-failed', 'Authentication failed', authError);
       return new Response(JSON.stringify({ 
         error: 'Authentication failed',
         details: authError?.message
@@ -94,16 +209,28 @@ serve(async (req: Request) => {
       });
     }
 
-    console.log('✅ User authenticated:', data.user.id);
+    logger.setContext({ user_id: data.user.id });
+    await logger.info('auth-success', 'User authenticated successfully', {
+      user_id: data.user.id
+    });
 
     // Parse request body
     const requestBody = await req.json();
-    console.log('✅ Request body parsed:', Object.keys(requestBody));
+    await logger.info('request-parsed', 'Request body parsed', {
+      keys: Object.keys(requestBody),
+      has_config: !!requestBody.config
+    });
 
     const { user_id, config_id, config } = requestBody;
 
     // Validate required fields
     if (!user_id || !config_id || !config) {
+      await logger.error('validation-failed', 'Missing required fields', {
+        has_user_id: !!user_id,
+        has_config_id: !!config_id,
+        has_config: !!config
+      });
+      
       return new Response(JSON.stringify({ 
         error: 'Missing required fields: user_id, config_id, config',
         received: { user_id: !!user_id, config_id: !!config_id, config: !!config }
@@ -114,6 +241,11 @@ serve(async (req: Request) => {
     }
 
     if (user_id !== data.user.id) {
+      await logger.error('user-mismatch', 'User ID mismatch', {
+        sent_user_id: user_id,
+        auth_user_id: data.user.id
+      });
+      
       return new Response(JSON.stringify({ 
         error: 'User ID mismatch',
         sent: user_id,
@@ -124,7 +256,11 @@ serve(async (req: Request) => {
       });
     }
 
-    console.log('✅ Request validation passed');
+    logger.setContext({ config_id, job_type: 'booking' });
+    await logger.info('validation-success', 'Request validation passed', {
+      config_keys: Object.keys(config),
+      locations_count: config.locations?.length || 0
+    });
 
     // Check subscription (relaxed for testing)
     try {
@@ -136,20 +272,27 @@ serve(async (req: Request) => {
         .single();
 
       if (subError || !subscription) {
-        console.warn('⚠️ No active subscription found, allowing for testing');
-        console.log('Subscription error:', subError?.message);
+        await logger.warn('subscription-missing', 'No active subscription found, allowing for testing', {
+          subscription_error: subError?.message
+        });
       } else {
-        console.log('✅ Active subscription found:', subscription.id);
+        await logger.info('subscription-valid', 'Active subscription found', {
+          subscription_id: subscription.id,
+          subscription_status: subscription.status
+        });
       }
     } catch (subscriptionError) {
-      console.warn('⚠️ Subscription check failed, continuing for testing:', subscriptionError);
+      await logger.warn('subscription-check-failed', 'Subscription check failed, continuing for testing', {
+        error: subscriptionError
+      });
     }
 
     // Create booking session in database
     const testJobId = `job-${Date.now()}`;
+    logger.setContext({ job_id: testJobId });
     
     try {
-      console.log('Creating booking session...');
+      await logger.info('session-creating', 'Creating booking session in database');
       
       const { data: session, error: sessionError } = await serviceClient
         .from('booking_sessions')
@@ -163,21 +306,25 @@ serve(async (req: Request) => {
             stage: 'initializing',
             message: '🚀 Startar automatisk bokning via Supabase...',
             timestamp: new Date().toISOString(),
-            test_mode: true
+            test_mode: true,
+            trace_id: logger.getTraceId()
           }
         })
         .select()
         .single();
 
       if (sessionError) {
-        console.error('❌ Session creation failed:', sessionError);
+        await logger.error('session-failed', 'Session creation failed', sessionError);
         throw sessionError;
       }
 
-      console.log('✅ Booking session created:', session.id);
-
-      // Type the session properly
       const typedSession = session as BookingSession;
+      logger.setContext({ session_id: typedSession.id });
+      
+      await logger.info('session-created', 'Booking session created successfully', {
+        session_id: typedSession.id,
+        status: 'starting'
+      });
 
       // Now call VPS server to start the actual automation
       let vpsSuccess = false;
@@ -185,7 +332,7 @@ serve(async (req: Request) => {
       let vpsResult: VPSResponse | null = null;
 
       try {
-        console.log('🚀 Starting VPS automation via internal proxy...');
+        await logger.info('vps-starting', 'Starting VPS automation via internal proxy');
         
         // Prepare VPS request
         const vpsConfig = {
@@ -197,25 +344,40 @@ serve(async (req: Request) => {
           vehicle_language: config.vehicle_language,
           locations: config.locations,
           date_ranges: config.date_ranges,
-          webhook_url: `${supabaseUrl}/functions/v1/vps-webhook`
+          webhook_url: `${supabaseUrl}/functions/v1/vps-webhook`,
+          trace_id: await logger.logTraceHandoff('vps')
         };
 
-        console.log('VPS request config:', vpsConfig);
+        await logger.info('vps-config-prepared', 'VPS configuration prepared', {
+          has_personal_number: !!vpsConfig.personal_number,
+          license_type: vpsConfig.license_type,
+          exam_type: vpsConfig.exam_type,
+          locations_count: vpsConfig.locations?.length || 0,
+          date_ranges_count: vpsConfig.date_ranges?.length || 0
+        });
 
-        // Instead of calling VPS directly, call our own vps-proxy Edge Function with action=start
-        // This avoids external network restrictions
+        // Call our own vps-proxy Edge Function with action=start
         const vpsProxyUrl = `${supabaseUrl}/functions/v1/vps-proxy?action=start`;
+        const vpsStartTime = Date.now();
+        
         const vpsResponse = await fetch(vpsProxyUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': authHeader
+            'Authorization': authHeader,
+            'x-trace-id': logger.getTraceId()
           },
           body: JSON.stringify(vpsConfig)
         });
 
+        const vpsDuration = Date.now() - vpsStartTime;
+
         if (!vpsResponse.ok) {
           const errorText = await vpsResponse.text();
+          await logger.error('vps-proxy-failed', 'VPS proxy request failed', null, {
+            status: vpsResponse.status,
+            error_text: errorText
+          });
           throw new Error(`VPS proxy error: ${vpsResponse.status} - ${errorText}`);
         }
 
@@ -226,7 +388,11 @@ serve(async (req: Request) => {
           vpsJobId = vpsResult?.job_id || typedSession.booking_details?.job_id || testJobId;
           vpsSuccess = true;
           
-          console.log('✅ VPS automation started via internal proxy:', vpsResult);
+          await logger.info('vps-success', 'VPS automation started successfully via internal proxy', {
+            vps_job_id: vpsResult?.job_id,
+            vps_status: vpsResult?.status,
+            response_data: vpsResult
+          }, vpsDuration);
           
           // Update session with real VPS job ID
           await serviceClient
@@ -238,17 +404,21 @@ serve(async (req: Request) => {
                 vps_response: vpsResult,
                 stage: 'automation_started',
                 message: '🚀 Automatisering startad via intern proxy!',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                trace_id: logger.getTraceId()
               }
             })
             .eq('id', typedSession.id);
             
         } else {
+          await logger.error('vps-invalid-response', 'VPS returned unsuccessful result', null, {
+            vps_response: vpsData
+          });
           throw new Error(`VPS booking function returned unsuccessful result: ${JSON.stringify(vpsData)}`);
         }
         
       } catch (vpsError: any) {
-        console.warn('⚠️ VPS integration failed:', vpsError);
+        await logger.error('vps-integration-failed', 'VPS integration failed', vpsError);
         vpsSuccess = false;
         
         // Update session with VPS error
@@ -260,7 +430,8 @@ serve(async (req: Request) => {
               vps_error: vpsError?.message || 'Unknown VPS error',
               stage: 'vps_failed',
               message: '⚠️ VPS fel - använder intern proxy fallback',
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              trace_id: logger.getTraceId()
             }
           })
           .eq('id', typedSession.id);
@@ -280,13 +451,23 @@ serve(async (req: Request) => {
               message: vpsSuccess ? '🚀 Automatisering startad på VPS!' : '⚠️ VPS integration failed',
               progress: vpsSuccess ? 20 : 5,
               vps_success: vpsSuccess,
-              test_mode: !vpsSuccess
+              test_mode: !vpsSuccess,
+              trace_id: logger.getTraceId()
             }
           });
-        console.log('✅ Real-time update broadcasted');
+          
+        await logger.info('broadcast-sent', 'Real-time update broadcasted', {
+          channel: `booking-${data.user.id}`,
+          status: vpsSuccess ? 'automation_started' : 'vps_failed'
+        });
+        
       } catch (broadcastError) {
-        console.warn('⚠️ Broadcast failed:', broadcastError);
+        await logger.warn('broadcast-failed', 'Real-time broadcast failed', {
+          error: broadcastError
+        });
       }
+
+      await logger.logTraceSummary();
 
       // Return success response
       return new Response(JSON.stringify({
@@ -300,13 +481,14 @@ serve(async (req: Request) => {
         database_operations: true,
         vps_integration: vpsSuccess,
         vps_result: vpsSuccess && vpsResult ? vpsResult : null,
-        status: vpsSuccess ? 'PRODUCTION' : 'FALLBACK'
+        status: vpsSuccess ? 'PRODUCTION' : 'FALLBACK',
+        trace_id: logger.getTraceId()
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
 
     } catch (dbError: any) {
-      console.error('❌ Database operation failed:', dbError);
+      await logger.error('database-failed', 'Database operation failed', dbError);
       
       // Return test success even if DB fails
       return new Response(JSON.stringify({
@@ -316,19 +498,21 @@ serve(async (req: Request) => {
         message: '⚠️ DB failed but continuing in test mode',
         user_id: data.user.id,
         database_error: dbError?.message || 'Unknown database error',
-        test_mode: true
+        test_mode: true,
+        trace_id: logger.getTraceId()
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     
   } catch (error: any) {
-    console.error('💥 ERROR:', error);
+    await logger.error('function-error', 'Critical function error', error);
     
     return new Response(JSON.stringify({ 
       error: 'Function error: ' + (error?.message || 'Unknown error'),
       name: error?.name || 'Unknown',
-      stack: error?.stack?.split('\n').slice(0, 5) || []
+      stack: error?.stack?.split('\n').slice(0, 5) || [],
+      trace_id: logger.getTraceId()
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
