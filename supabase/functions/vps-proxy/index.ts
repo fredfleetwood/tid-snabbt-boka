@@ -72,7 +72,7 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        vpsUrl = `http://87.106.247.92:8000/api/v1/booking/${jobId}/qr`;
+        vpsUrl = `http://tender-lovelace.87-106-247-92.plesk.page:8080/api/v1/booking/${jobId}/qr`;
         break;
       case 'status':
         if (!jobId) {
@@ -81,7 +81,7 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        vpsUrl = `http://87.106.247.92:8000/api/v1/booking/status/${jobId}`;
+        vpsUrl = `http://tender-lovelace.87-106-247-92.plesk.page:8080/api/v1/booking/status/${jobId}`;
         break;
       case 'start':
         // For booking start, we expect POST data in the request body
@@ -93,8 +93,9 @@ serve(async (req) => {
           });
         }
         try {
-          body = await req.text();
-          requestData = JSON.parse(body);
+          const requestText = await req.text();
+          body = requestText;
+          requestData = JSON.parse(requestText);
           
           // Add trace ID to the request body for VPS server
           if (requestData && typeof requestData === 'object') {
@@ -102,7 +103,7 @@ serve(async (req) => {
             body = JSON.stringify(requestData);
           }
           
-          vpsUrl = `http://87.106.247.92:8000/api/v1/booking/start`;
+          vpsUrl = `http://tender-lovelace.87-106-247-92.plesk.page:8080/api/v1/booking/start`;
           method = 'POST';
           
           await logger.info('start-request-prepared', 'Start booking request prepared', {
@@ -127,7 +128,7 @@ serve(async (req) => {
         }
         try {
           body = await req.text();
-          vpsUrl = `http://87.106.247.92:8000/api/v1/booking/stop`;
+          vpsUrl = `http://tender-lovelace.87-106-247-92.plesk.page:8080/api/v1/booking/stop`;
           method = 'POST';
         } catch (e) {
           return new Response(JSON.stringify({ error: 'Invalid request body for stop action' }), {
@@ -154,26 +155,72 @@ serve(async (req) => {
       ...(body && { body })
     };
 
-    const vpsResponse = await fetch(vpsUrl, requestOptions);
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('VPS request timeout after 10 seconds')), 10000);
+    });
 
-    if (!vpsResponse.ok) {
-      const errorText = await vpsResponse.text();
-      return new Response(JSON.stringify({ 
-        error: `VPS server error: ${vpsResponse.status}`,
-        details: errorText
-      }), {
+    try {
+      await logger.info('vps-request', `Making request to VPS server`, {
+        url: vpsUrl,
+        method: method,
+        has_body: !!body
+      });
+
+      const vpsResponse = await Promise.race([
+        fetch(vpsUrl, requestOptions),
+        timeoutPromise
+      ]) as Response;
+      
+      await logger.info('vps-response', `VPS server responded`, {
         status: vpsResponse.status,
+        ok: vpsResponse.ok
+      });
+
+      if (!vpsResponse.ok) {
+        const errorText = await vpsResponse.text();
+        await logger.error('vps-error', `VPS server returned error: ${vpsResponse.status}`, {
+          status: vpsResponse.status,
+          error: errorText
+        });
+        
+        return new Response(JSON.stringify({ 
+          error: `VPS server error: ${vpsResponse.status}`,
+          details: errorText
+        }), {
+          status: vpsResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const data = await vpsResponse.json();
+      
+      await logger.info('proxy-success', `VPS Proxy success for ${action}`, {
+        response_type: data.type || data.status || 'response',
+        job_id: data.job_id || 'unknown'
+      });
+
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+      
+    } catch (fetchError) {
+      await logger.error('vps-fetch-error', 'VPS server fetch failed', {
+        error: fetchError.message,
+        url: vpsUrl
+      });
+      
+      // Return a specific error for timeout vs other network issues
+      const isTimeout = fetchError.message.includes('timeout');
+      return new Response(JSON.stringify({ 
+        error: isTimeout ? 'VPS server timeout' : 'VPS server unreachable',
+        details: fetchError.message,
+        vps_url: vpsUrl
+      }), {
+        status: 504, // Gateway Timeout for timeouts, 502 for other issues
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    const data = await vpsResponse.json();
-    
-    console.log(`✅ VPS Proxy success for ${action}:`, data.type || data.status || 'response');
-
-    return new Response(JSON.stringify(data), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
 
   } catch (error) {
     console.error('❌ VPS Proxy error:', error);
