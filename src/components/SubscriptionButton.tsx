@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,11 +29,42 @@ const SubscriptionButton = ({ subscribed = false }: SubscriptionButtonProps) => 
     logSecurityEvent('SUBSCRIPTION_CHECKOUT_INITIATED', { userId: user.id });
 
     try {
+      console.log('[CREATE-CHECKOUT] 🔄 Checking session validity...');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session?.access_token) {
+        console.log('[CREATE-CHECKOUT] ⚠️ Session invalid, attempting refresh...');
+        
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !refreshedSession?.access_token) {
+          console.log('[CREATE-CHECKOUT] ❌ Session refresh failed');
+          toast({
+            title: "Session upphörd",
+            description: "Din session har upphört. Vänligen ladda om sidan och logga in igen.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        console.log('[CREATE-CHECKOUT] ✅ Session refreshed successfully');
+      }
+      
       const { data, error } = await supabase.functions.invoke('create-checkout');
       
       if (error) {
         console.error('Checkout error:', error);
         logSecurityEvent('SUBSCRIPTION_CHECKOUT_ERROR', { error: error.message });
+        
+        if (error.message?.includes('JWT') || error.message?.includes('auth') || error.message?.includes('401')) {
+          toast({
+            title: "Autentiseringsfel",
+            description: "Din session har upphört. Vänligen ladda om sidan och försök igen.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
         toast({
           title: "Fel",
           description: "Kunde inte starta betalningsprocessen. Försök igen.",
@@ -45,7 +75,6 @@ const SubscriptionButton = ({ subscribed = false }: SubscriptionButtonProps) => 
 
       if (data?.url) {
         logSecurityEvent('SUBSCRIPTION_CHECKOUT_REDIRECT', { url: data.url });
-        // Open Stripe checkout in a new tab
         window.open(data.url, '_blank');
       } else {
         throw new Error('No checkout URL received');

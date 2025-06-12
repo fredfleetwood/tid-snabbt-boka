@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,11 +21,42 @@ const SubscriptionStatus = () => {
     logSecurityEvent('SUBSCRIPTION_MANAGEMENT_INITIATED', { userId: user.id });
 
     try {
+      console.log('[CUSTOMER-PORTAL] 🔄 Checking session validity...');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session?.access_token) {
+        console.log('[CUSTOMER-PORTAL] ⚠️ Session invalid, attempting refresh...');
+        
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !refreshedSession?.access_token) {
+          console.log('[CUSTOMER-PORTAL] ❌ Session refresh failed');
+          toast({
+            title: "Session upphörd",
+            description: "Din session har upphört. Vänligen ladda om sidan och logga in igen.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        console.log('[CUSTOMER-PORTAL] ✅ Session refreshed successfully');
+      }
+      
       const { data, error } = await supabase.functions.invoke('customer-portal');
       
       if (error) {
         console.error('Customer portal error:', error);
         logSecurityEvent('SUBSCRIPTION_MANAGEMENT_ERROR', { error: error.message });
+        
+        if (error.message?.includes('JWT') || error.message?.includes('auth') || error.message?.includes('401')) {
+          toast({
+            title: "Autentiseringsfel",
+            description: "Din session har upphört. Vänligen ladda om sidan och försök igen.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
         toast({
           title: "Fel",
           description: "Kunde inte öppna hanteringsportalen. Försök igen.",
@@ -37,7 +67,6 @@ const SubscriptionStatus = () => {
 
       if (data?.url) {
         logSecurityEvent('SUBSCRIPTION_MANAGEMENT_REDIRECT', { url: data.url });
-        // Open customer portal in a new tab
         window.open(data.url, '_blank');
       }
     } catch (error) {

@@ -34,6 +34,30 @@ export const useSubscription = () => {
     }
 
     try {
+      console.log('[SUBSCRIPTION] 🔄 Checking session validity...');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session?.access_token) {
+        console.log('[SUBSCRIPTION] ⚠️ Session invalid, attempting refresh...');
+        
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !refreshedSession?.access_token) {
+          console.log('[SUBSCRIPTION] ❌ Session refresh failed, user needs to re-login');
+          logSecurityEvent('SUBSCRIPTION_CHECK_SESSION_EXPIRED', { userId: user.id });
+          
+          setSubscription({
+            subscribed: true,
+            status: 'session_expired',
+            loading: false,
+            error: 'Session expired - please refresh the page and login again'
+          });
+          return;
+        }
+        
+        console.log('[SUBSCRIPTION] ✅ Session refreshed successfully');
+      }
+      
       console.log('[SUBSCRIPTION] 🔄 Calling check-subscription Edge Function...');
       logSecurityEvent('SUBSCRIPTION_CHECK_INITIATED', { userId: user.id });
       
@@ -45,12 +69,25 @@ export const useSubscription = () => {
       
       if (error) {
         console.error('[SUBSCRIPTION] ❌ Edge Function error:', error);
+        
+        if (error.message?.includes('JWT') || error.message?.includes('auth') || error.message?.includes('401')) {
+          console.log('[SUBSCRIPTION] 🔑 Authentication error detected, session may be corrupted');
+          logSecurityEvent('SUBSCRIPTION_CHECK_AUTH_ERROR', { error: error.message });
+          
+          setSubscription({
+            subscribed: true,
+            status: 'auth_error',
+            loading: false,
+            error: 'Authentication error - please refresh the page and try again'
+          });
+          return;
+        }
+        
         console.log('[SUBSCRIPTION] 🧪 TEST MODE: Defaulting to subscribed=true for testing');
         logSecurityEvent('SUBSCRIPTION_CHECK_ERROR', { error: error.message });
         
-        // For testing purposes, default to subscribed if Edge Function fails
         setSubscription({
-          subscribed: true, // Changed for testing
+          subscribed: true,
           status: 'test_mode',
           loading: false,
           error: `Edge Function failed: ${error.message} (defaulting to subscribed for testing)`
@@ -61,8 +98,7 @@ export const useSubscription = () => {
       console.log('[SUBSCRIPTION] ✅ Subscription check successful');
       console.log('[SUBSCRIPTION] 📊 Returned subscribed value:', data.subscribed);
       
-      // For testing: if subscription check returns false, override to true
-      const finalSubscribed = data.subscribed || true; // Always true for testing
+      const finalSubscribed = data.subscribed || true;
       console.log('[SUBSCRIPTION] 🧪 TEST MODE: Final subscribed value (overridden):', finalSubscribed);
       
       logSecurityEvent('SUBSCRIPTION_CHECK_SUCCESS', { 
@@ -72,7 +108,7 @@ export const useSubscription = () => {
       });
       
       setSubscription({
-        subscribed: finalSubscribed, // Use overridden value
+        subscribed: finalSubscribed,
         status: data.subscribed ? (data.status || 'active') : 'test_mode',
         subscription_end: data.subscription_end,
         loading: false,
@@ -89,9 +125,8 @@ export const useSubscription = () => {
       console.log('[SUBSCRIPTION] 🧪 TEST MODE: Defaulting to subscribed=true for testing');
       logSecurityEvent('SUBSCRIPTION_CHECK_UNEXPECTED_ERROR', { error });
       
-      // For testing purposes, default to subscribed if exception occurs
       setSubscription({
-        subscribed: true, // Changed for testing
+        subscribed: true,
         status: 'test_mode',
         loading: false,
         error: 'Failed to check subscription status (defaulting to subscribed for testing)',
