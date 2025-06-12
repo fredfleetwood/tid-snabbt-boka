@@ -23,10 +23,13 @@ serve(async (req) => {
   try {
     console.log('=== QR STORAGE FUNCTION CALLED ===');
     
-    // Create Supabase client with service role for storage operations
+    // Create Supabase client using the authorization from the request
+    const authHeader = req.headers.get('authorization');
+    const apiKey = (authHeader?.replace('Bearer ', '')) || (Deno.env.get('SUPABASE_ANON_KEY') ?? '');
+    
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      apiKey
     );
 
     if (req.method === 'POST') {
@@ -189,25 +192,85 @@ serve(async (req) => {
         .single();
 
       if (sessionError || !session) {
+        // FALLBACK: Check VPS Redis if no database session exists
+        console.log('No database session found, checking VPS Redis...');
+        
+        try {
+          const vpsQrResponse = await fetch(`http://87.106.247.92:8000/api/v1/booking/${job_id}/qr`, {
+            headers: {
+              'Authorization': 'Bearer test-secret-token-12345'
+            }
+          });
+          
+          if (vpsQrResponse.ok) {
+            const vpsQrData = await vpsQrResponse.json();
+            console.log('Found QR data in VPS Redis:', !!vpsQrData.image_data);
+            
+            if (vpsQrData.image_data) {
+              return new Response(JSON.stringify({ 
+                success: true,
+                qr_url: null,
+                qr_data: vpsQrData.image_data,
+                qr_updated_at: vpsQrData.timestamp,
+                job_id: job_id,
+                storage_method: 'vps_redis_fallback',
+                source: 'VPS Redis (database session missing)'
+              }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+          }
+        } catch (vpsError) {
+          console.warn('VPS Redis fallback failed:', vpsError);
+        }
+        
         return new Response(JSON.stringify({ 
-          error: 'Session not found'
+          error: 'Session not found in database and VPS Redis'
         }), {
           status: 404,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
+      // Check for QR in storage first (URL), then fallback to direct data
       const qr_url = session.booking_details?.qr_image_url || session.qr_code_image;
+      const qr_data = session.booking_details?.qr_image_data;
       const qr_updated_at = session.booking_details?.qr_updated_at;
+      const storage_method = session.booking_details?.qr_storage_method || 'unknown';
 
-      return new Response(JSON.stringify({ 
-        success: true,
-        qr_url: qr_url,
-        qr_updated_at: qr_updated_at,
-        job_id: job_id
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // Ensure we return either qr_url OR qr_data
+      if (qr_url) {
+        return new Response(JSON.stringify({ 
+          success: true,
+          qr_url: qr_url,
+          qr_data: null,
+          qr_updated_at: qr_updated_at,
+          job_id: job_id,
+          storage_method: storage_method
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } else if (qr_data) {
+        return new Response(JSON.stringify({ 
+          success: true,
+          qr_url: null,
+          qr_data: qr_data,
+          qr_updated_at: qr_updated_at,
+          job_id: job_id,
+          storage_method: storage_method
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } else {
+        return new Response(JSON.stringify({ 
+          success: false,
+          error: 'No QR code found for this job',
+          job_id: job_id
+        }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     throw new Error('Method not allowed');
