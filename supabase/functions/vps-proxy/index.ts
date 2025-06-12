@@ -72,7 +72,7 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        vpsUrl = `http://tender-lovelace.87-106-247-92.plesk.page:8080/api/v1/booking/${jobId}/qr`;
+        vpsUrl = `http://87.106.247.92:8000/api/v1/qr/${jobId}`;
         break;
       case 'status':
         if (!jobId) {
@@ -81,7 +81,7 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        vpsUrl = `http://tender-lovelace.87-106-247-92.plesk.page:8080/api/v1/booking/status/${jobId}`;
+        vpsUrl = `http://87.106.247.92:8000/api/v1/booking/status/${jobId}`;
         break;
       case 'start':
         // For booking start, we expect POST data in the request body
@@ -103,7 +103,7 @@ serve(async (req) => {
             body = JSON.stringify(requestData);
           }
           
-          vpsUrl = `http://tender-lovelace.87-106-247-92.plesk.page:8080/api/v1/booking/start`;
+          vpsUrl = `http://87.106.247.92:8000/api/v1/booking/start`;
           method = 'POST';
           
           await logger.info('start-request-prepared', 'Start booking request prepared', {
@@ -128,7 +128,7 @@ serve(async (req) => {
         }
         try {
           body = await req.text();
-          vpsUrl = `http://tender-lovelace.87-106-247-92.plesk.page:8080/api/v1/booking/stop`;
+          vpsUrl = `http://87.106.247.92:8000/api/v1/booking/stop`;
           method = 'POST';
         } catch (e) {
           return new Response(JSON.stringify({ error: 'Invalid request body for stop action' }), {
