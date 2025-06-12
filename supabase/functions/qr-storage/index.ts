@@ -84,7 +84,7 @@ serve(async (req) => {
       const { data: session, error: sessionError } = await supabaseClient
         .from('booking_sessions')
         .select('*')
-        .eq('job_id', job_id)
+        .eq('booking_details->>job_id', job_id)
         .single();
 
       if (!sessionError && session) {
@@ -185,7 +185,7 @@ serve(async (req) => {
       const { data: session, error: sessionError } = await supabaseClient
         .from('booking_sessions')
         .select('*')
-        .eq('job_id', job_id)
+        .eq('booking_details->>job_id', job_id)
         .single();
 
       if (sessionError || !session) {
