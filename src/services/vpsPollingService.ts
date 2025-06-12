@@ -44,11 +44,11 @@ export class VPSPollingService {
   }
 
   /**
-   * SMART QR POLLING - Waits for backend to be ready before starting QR requests
+   * ULTRA-FAST SMART QR POLLING - Optimized for backend's 2-second QR updates
    */
   async startSmartQRPolling(jobId: string): Promise<void> {
-    console.log(`🧠 [SMART-QR] Starting intelligent QR polling for job: ${jobId}`);
-    console.log(`🧠 [SMART-QR] Will wait for backend to reach QR-ready state before polling`);
+    console.log(`🧠 [ULTRA-SMART-QR] Starting ultra-responsive QR polling for job: ${jobId}`);
+    console.log(`🧠 [ULTRA-SMART-QR] Optimized for backend's 2-second QR update frequency`);
     
     this.stopQRPolling(); // Stop any existing polling
     this.stopStatusPolling(); // Stop any existing status polling
@@ -64,11 +64,11 @@ export class VPSPollingService {
   }
 
   /**
-   * Wait for backend to reach QR-ready state (qr_waiting, bankid_waiting, etc.)
+   * Wait for backend to reach QR-ready state with faster polling
    */
   private async waitForQRReadyState(jobId: string): Promise<void> {
     let attempts = 0;
-    const maxAttempts = 60; // 5 minutes max wait (5s intervals)
+    const maxAttempts = 40; // 2 minutes max wait (3s intervals)
     
     const checkStatus = async () => {
       try {
@@ -76,30 +76,33 @@ export class VPSPollingService {
         const status = await this.getJobStatus(jobId);
         
         if (status) {
-          console.log(`🧠 [SMART-QR] Status check #${attempts}: ${status.status}/${status.stage || 'no-stage'} - ${status.message || 'no-message'}`);
+          console.log(`🧠 [ULTRA-SMART-QR] Status check #${attempts}: ${status.status}/${status.stage || 'no-stage'} - ${status.message || 'no-message'}`);
           
-          // Check if we've reached QR-ready state
+          // Enhanced QR-ready state detection
           const qrReadyStates = [
             'qr_waiting', 
             'bankid_waiting', 
             'waiting_bankid',
             'qr_streaming',
-            'bankid'
+            'bankid',
+            'authenticating',
+            'authentication'
           ];
           
           const isQRReady = qrReadyStates.includes(status.status) || 
                           qrReadyStates.includes(status.stage || '') ||
-                          (status.message && status.message.toLowerCase().includes('qr'));
+                          (status.message && status.message.toLowerCase().includes('qr')) ||
+                          (status.message && status.message.toLowerCase().includes('bankid'));
           
           if (isQRReady) {
-            console.log(`🎯 [SMART-QR] Backend is QR-ready! Starting actual QR polling...`);
-            console.log(`🎯 [SMART-QR] Ready signal: status=${status.status}, stage=${status.stage}`);
+            console.log(`🎯 [ULTRA-SMART-QR] Backend is QR-ready! Starting ultra-fast QR polling...`);
+            console.log(`🎯 [ULTRA-SMART-QR] Ready signal: status=${status.status}, stage=${status.stage}`);
             
             this.stopStatusPolling();
             this.isWaitingForQRReady = false;
             
-            // Now start actual QR polling with progressive intervals
-            await this.startProgressiveQRPolling(jobId);
+            // Start ultra-fast QR polling with 1-second intervals
+            await this.startUltraFastQRPolling(jobId);
             return;
           }
           
@@ -108,46 +111,47 @@ export class VPSPollingService {
           
           // Check if job failed or completed
           if (status.status === 'error' || status.status === 'failed' || status.status === 'completed') {
-            console.log(`❌ [SMART-QR] Job ended before QR phase: ${status.status}`);
+            console.log(`❌ [ULTRA-SMART-QR] Job ended before QR phase: ${status.status}`);
             this.stopStatusPolling();
             this.isWaitingForQRReady = false;
             return;
           }
         } else {
-          console.log(`⚠️ [SMART-QR] Status check #${attempts}: No response from backend`);
+          console.log(`⚠️ [ULTRA-SMART-QR] Status check #${attempts}: No response from backend`);
         }
         
         if (attempts >= maxAttempts) {
-          console.log(`⏰ [SMART-QR] Timeout waiting for QR-ready state after ${maxAttempts} attempts`);
-          console.log(`🔄 [SMART-QR] Starting QR polling anyway as fallback...`);
+          console.log(`⏰ [ULTRA-SMART-QR] Timeout waiting for QR-ready state after ${maxAttempts} attempts`);
+          console.log(`🔄 [ULTRA-SMART-QR] Starting QR polling anyway as fallback...`);
           
           this.stopStatusPolling();
           this.isWaitingForQRReady = false;
-          await this.startProgressiveQRPolling(jobId);
+          await this.startUltraFastQRPolling(jobId);
         }
       } catch (error) {
-        console.error(`❌ [SMART-QR] Status check error:`, error);
+        console.error(`❌ [ULTRA-SMART-QR] Status check error:`, error);
       }
     };
 
-    // Start status polling with 5-second intervals
-    console.log(`🕐 [SMART-QR] Starting status polling (5s intervals) to wait for QR-ready state...`);
+    // Start status polling with 3-second intervals (faster than before)
+    console.log(`🕐 [ULTRA-SMART-QR] Starting status polling (3s intervals) to wait for QR-ready state...`);
     await checkStatus(); // Check immediately
-    this.statusPollingInterval = setInterval(checkStatus, 5000);
+    this.statusPollingInterval = setInterval(checkStatus, 3000);
   }
 
   /**
-   * Progressive QR polling - starts slow, speeds up when QR detected
-   * Uses Supabase Storage for efficient QR retrieval
+   * Ultra-fast QR polling - 1-second intervals to catch backend's 2-second updates
    */
-  private async startProgressiveQRPolling(jobId: string): Promise<void> {
-    console.log(`📈 [PROGRESSIVE-QR] Starting progressive QR polling via Storage for job: ${jobId}`);
+  private async startUltraFastQRPolling(jobId: string): Promise<void> {
+    console.log(`⚡ [ULTRA-FAST-QR] Starting ultra-fast QR polling for job: ${jobId}`);
+    console.log(`⚡ [ULTRA-FAST-QR] Using 1-second intervals to catch 2-second backend updates`);
     
-    let currentInterval = 5000; // Start with 5 second intervals
-    let hasSeenQR = false;
+    let qrDetectionAttempts = 0;
+    let hasSeenFirstQR = false;
     
     const pollQRCode = async () => {
       try {
+        qrDetectionAttempts++;
         const startTime = Date.now();
         const response = await fetch(`${this.qrStorageUrl}?job_id=${jobId}&_t=${Date.now()}`, {
           headers: {
@@ -164,40 +168,48 @@ export class VPSPollingService {
         if (response.ok) {
           const data = await response.json();
           
-          // Check for QR code URL in response (from Supabase Storage)
+          // Check for QR code URL in response
           if (data.qr_url && data.success) {
-            const qrCode = data.qr_url; // Storage URL instead of base64
+            const qrCode = data.qr_url;
             const currentTime = Date.now();
             
-            // First QR detected - switch to fast polling!
-            if (!hasSeenQR) {
-              hasSeenQR = true;
-              console.log(`🚀 [PROGRESSIVE-QR] FIRST QR DETECTED! Switching to fast 1-second polling...`);
-              
-              // Stop current interval and restart with 1-second intervals
-              this.stopQRPolling();
-              await this.startQRPolling(jobId, 1000);
-              return; // Exit this progressive polling
+            // First QR detected - celebrate!
+            if (!hasSeenFirstQR) {
+              hasSeenFirstQR = true;
+              console.log(`🎉 [ULTRA-FAST-QR] FIRST QR DETECTED after ${qrDetectionAttempts} attempts!`);
+              console.log(`🎉 [ULTRA-FAST-QR] QR system is now live and responsive!`);
             }
             
-            // QR DEDUPLICATION - only send if different from last QR
+            // Enhanced QR deduplication with hash comparison
             if (qrCode !== this.lastQrCode) {
               this.qrUpdateCount++;
               const timeSinceLastQr = this.lastQrTimestamp > 0 ? currentTime - this.lastQrTimestamp : 0;
               
-              console.log(`🆕 [QR-UPDATE #${this.qrUpdateCount}] NEW QR detected!`);
-              console.log(`📊 [QR-TIMING] Response time: ${responseTime}ms, Gap since last QR: ${timeSinceLastQr}ms`);
+              console.log(`⚡ [QR-UPDATE #${this.qrUpdateCount}] NEW QR detected!`);
+              console.log(`📊 [QR-METRICS] Response: ${responseTime}ms, Gap: ${timeSinceLastQr}ms, Attempts: ${qrDetectionAttempts}`);
+              
+              // Check if this follows the expected ~2 second pattern
+              if (timeSinceLastQr > 0) {
+                const updatePattern = timeSinceLastQr / 1000;
+                console.log(`🔄 [QR-PATTERN] Update frequency: ${updatePattern.toFixed(1)}s (expect ~2.0s)`);
+              }
               
               this.lastQrCode = qrCode;
               this.lastQrTimestamp = currentTime;
               this.onQRCode?.(qrCode);
+              
+              // Reset detection attempts after successful QR
+              qrDetectionAttempts = 0;
+            } else {
+              // Same QR code - still good, shows system is stable
+              console.log(`🔄 [QR-STABLE] Same QR (${responseTime}ms) - backend stable`);
             }
           } else {
-            // No QR yet - this is expected early on
+            // No QR yet - count attempts
             if (data.error && data.error.includes('not found')) {
-              console.log(`⏳ [PROGRESSIVE-QR] QR Storage not ready (${responseTime}ms) - waiting for QR upload... (${currentInterval}ms intervals)`);
+              console.log(`⏳ [ULTRA-FAST-QR] QR not ready (${responseTime}ms) - attempt ${qrDetectionAttempts}`);
             } else {
-              console.log(`⏳ [PROGRESSIVE-QR] No QR URL yet (${responseTime}ms) - backend preparing... (${currentInterval}ms intervals)`);
+              console.log(`⏳ [ULTRA-FAST-QR] No QR URL yet (${responseTime}ms) - backend preparing...`);
             }
           }
 
@@ -207,25 +219,33 @@ export class VPSPollingService {
           }
         } else {
           const errorText = await response.text();
-          console.warn(`⚠️ [PROGRESSIVE-QR] Polling failed: ${response.status} (${responseTime}ms) - ${errorText}`);
+          console.warn(`⚠️ [ULTRA-FAST-QR] Polling failed: ${response.status} (${responseTime}ms) - ${errorText}`);
         }
       } catch (error) {
-        console.error('❌ [PROGRESSIVE-QR] Polling error:', error);
+        console.error('❌ [ULTRA-FAST-QR] Polling error:', error);
       }
     };
 
-    // Start with slower polling, will accelerate when first QR is found
-    console.log(`📈 [PROGRESSIVE-QR] Starting with ${currentInterval}ms intervals until first QR detected`);
+    // Start ultra-fast polling with 1-second intervals
+    console.log(`⚡ [ULTRA-FAST-QR] Starting consistent 1000ms intervals`);
     await pollQRCode();
-    this.pollingInterval = setInterval(pollQRCode, currentInterval);
+    this.pollingInterval = setInterval(pollQRCode, 1000);
   }
 
   /**
-   * Original QR polling method (for when we know QR is ready)
-   * Uses Supabase Storage for efficient QR retrieval
+   * Progressive QR polling - LEGACY method, replaced by ultra-fast polling
+   */
+  private async startProgressiveQRPolling(jobId: string): Promise<void> {
+    console.log(`📈 [PROGRESSIVE-QR] LEGACY: Redirecting to ultra-fast polling...`);
+    await this.startUltraFastQRPolling(jobId);
+  }
+
+  /**
+   * Enhanced QR polling method - optimized for 2-second backend updates
    */
   async startQRPolling(jobId: string, intervalMs: number = 1000): Promise<void> {
-    console.log(`🔍 [QR-POLLING] Starting FAST Storage polling for job: ${jobId} (interval: ${intervalMs}ms)`);
+    console.log(`🔍 [QR-POLLING] Starting enhanced QR polling for job: ${jobId} (interval: ${intervalMs}ms)`);
+    console.log(`🔍 [QR-POLLING] Optimized for backend's 2-second QR update frequency`);
     
     this.stopQRPolling(); // Stop any existing polling
     
@@ -236,8 +256,12 @@ export class VPSPollingService {
       this.lastQrTimestamp = 0;
     }
     
+    let consecutiveFailures = 0;
+    let totalAttempts = 0;
+    
     const pollQRCode = async () => {
       try {
+        totalAttempts++;
         const startTime = Date.now();
         const response = await fetch(`${this.qrStorageUrl}?job_id=${jobId}&_t=${Date.now()}`, {
           headers: {
@@ -252,35 +276,51 @@ export class VPSPollingService {
         const responseTime = Date.now() - startTime;
 
         if (response.ok) {
+          consecutiveFailures = 0; // Reset failure count
           const data = await response.json();
           
-          // Check for QR code URL in response (from Supabase Storage)
+          // Check for QR code URL in response
           if (data.qr_url && data.success) {
-            const qrCode = data.qr_url; // Storage URL instead of base64
+            const qrCode = data.qr_url;
             const currentTime = Date.now();
             
-            // QR DEDUPLICATION - only send if different from last QR
+            // Enhanced QR deduplication with timing analysis
             if (qrCode !== this.lastQrCode) {
               this.qrUpdateCount++;
               const timeSinceLastQr = this.lastQrTimestamp > 0 ? currentTime - this.lastQrTimestamp : 0;
               
-              console.log(`🆕 [QR-UPDATE #${this.qrUpdateCount}] NEW QR detected!`);
-              console.log(`📊 [QR-TIMING] Response time: ${responseTime}ms, Gap since last QR: ${timeSinceLastQr}ms`);
-              console.log(`📱 [QR-DATA] Length: ${qrCode.length}, Preview: ${qrCode.substring(0, 50)}...`);
+              console.log(`⭐ [QR-UPDATE #${this.qrUpdateCount}] NEW QR detected!`);
+              console.log(`📊 [QR-METRICS] Response: ${responseTime}ms, Gap: ${timeSinceLastQr}ms, Total attempts: ${totalAttempts}`);
+              
+              // Analyze update pattern
+              if (timeSinceLastQr > 0) {
+                const updateFrequency = timeSinceLastQr / 1000;
+                const expectedFrequency = 2.0; // Backend updates every 2 seconds
+                const variance = Math.abs(updateFrequency - expectedFrequency);
+                
+                if (variance < 0.5) {
+                  console.log(`✅ [QR-TIMING] Perfect timing: ${updateFrequency.toFixed(1)}s (expected ${expectedFrequency}s)`);
+                } else {
+                  console.log(`⚠️ [QR-TIMING] Timing variance: ${updateFrequency.toFixed(1)}s (expected ${expectedFrequency}s, variance: ${variance.toFixed(1)}s)`);
+                }
+              }
               
               this.lastQrCode = qrCode;
               this.lastQrTimestamp = currentTime;
               this.onQRCode?.(qrCode);
+              
+              // Reset attempt counter after successful QR
+              totalAttempts = 0;
             } else {
-              // Same QR code - log but don't send
-              console.log(`🔄 [QR-SAME] Identical QR received (${responseTime}ms response time)`);
+              // Same QR code - system is stable
+              console.log(`🔄 [QR-STABLE] Identical QR (${responseTime}ms) - system stable`);
             }
           } else {
             // Check if QR storage is not ready yet
             if (data.error && data.error.includes('not found')) {
-              console.log(`⏰ [QR-STORAGE] QR not uploaded to Storage yet (${responseTime}ms) - waiting for backend upload`);
+              console.log(`⏰ [QR-STORAGE] QR not uploaded yet (${responseTime}ms) - waiting...`);
             } else {
-              console.log(`⭕ [QR-STORAGE] No QR URL in Storage response (${responseTime}ms)`);
+              console.log(`⭕ [QR-STORAGE] No QR URL in response (${responseTime}ms)`);
             }
           }
 
@@ -289,16 +329,23 @@ export class VPSPollingService {
             this.onStatusUpdate?.(data);
           }
         } else {
+          consecutiveFailures++;
           const errorText = await response.text();
-          console.warn(`⚠️ [QR-ERROR] Polling failed: ${response.status} (${responseTime}ms) - ${errorText}`);
+          console.warn(`⚠️ [QR-ERROR] Polling failed #${consecutiveFailures}: ${response.status} (${responseTime}ms) - ${errorText}`);
+          
+          // If too many consecutive failures, log warning
+          if (consecutiveFailures >= 5) {
+            console.error(`🚨 [QR-ERROR] ${consecutiveFailures} consecutive failures - backend may be down`);
+          }
         }
       } catch (error) {
-        console.error('❌ [QR-EXCEPTION] Polling error:', error);
+        consecutiveFailures++;
+        console.error(`❌ [QR-EXCEPTION] Polling error #${consecutiveFailures}:`, error);
       }
     };
 
-    // Poll immediately, then on consistent interval
-    console.log(`⚡ [QR-POLLING] Using CONSISTENT ${intervalMs}ms interval`);
+    // Start polling with optimal timing
+    console.log(`⚡ [QR-POLLING] Using optimized ${intervalMs}ms intervals for 2-second backend updates`);
     await pollQRCode();
     this.pollingInterval = setInterval(pollQRCode, intervalMs);
   }

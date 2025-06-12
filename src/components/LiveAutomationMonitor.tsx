@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,10 +13,14 @@ import {
   RotateCcw,
   Clock,
   Cpu,
-  HardDrive
+  HardDrive,
+  Zap,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
-import { vpsService } from '@/services/vpsService';
-import { VPSWebSocketMessage, VPSJobStatus, VPSSystemHealth } from '@/services/types/vpsTypes';
+import { VPSPollingService } from '@/services/vpsPollingService';
+import { VPSJobStatus, VPSSystemHealth } from '@/services/types/vpsTypes';
+import QRCodeDisplay from '@/components/booking/QRCodeDisplay';
 
 interface LiveAutomationMonitorProps {
   jobId: string;
@@ -34,7 +37,13 @@ interface StatusConfig {
 const statusConfigs: Record<string, StatusConfig> = {
   idle: { emoji: '⏸️', text: 'System idle...', progress: 0, color: 'bg-gray-500' },
   initializing: { emoji: '🚀', text: 'Initializing automation...', progress: 5, color: 'bg-blue-500' },
+  starting: { emoji: '⚡', text: 'Starting browser automation...', progress: 10, color: 'bg-blue-600' },
+  navigating: { emoji: '🌐', text: 'Navigating to Trafikverket...', progress: 15, color: 'bg-cyan-500' },
+  login: { emoji: '🔑', text: 'Starting login process...', progress: 20, color: 'bg-indigo-500' },
+  bankid: { emoji: '📱', text: 'BankID authentication in progress...', progress: 25, color: 'bg-orange-500' },
   waiting_bankid: { emoji: '📱', text: 'Waiting for BankID authentication...', progress: 35, color: 'bg-orange-500' },
+  authenticated: { emoji: '✅', text: 'Authentication completed!', progress: 40, color: 'bg-green-600' },
+  configuring: { emoji: '⚙️', text: 'Configuring booking parameters...', progress: 50, color: 'bg-purple-500' },
   searching: { emoji: '🔍', text: 'Searching for available slots...', progress: 75, color: 'bg-purple-500' },
   booking: { emoji: '📅', text: 'Booking available slot...', progress: 90, color: 'bg-green-700' },
   completed: { emoji: '🎉', text: 'Booking completed successfully!', progress: 100, color: 'bg-green-800' },
@@ -57,6 +66,9 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [qrUpdateCount, setQrUpdateCount] = useState(0);
+  const [lastQrUpdate, setLastQrUpdate] = useState<string>('');
+  const [pollingService, setPollingService] = useState<VPSPollingService | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll logs to bottom
@@ -66,83 +78,78 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
     }
   }, [logs]);
 
-  // WebSocket connection and event handling
+  // Enhanced VPS polling service integration
   useEffect(() => {
-    const handleMessage = (message: VPSWebSocketMessage) => {
-      console.log('WebSocket message received:', message);
-      
-      switch (message.type) {
-        case 'status_update':
-          setStatus(message.data);
-          if (message.data.started_at && !startTime) {
-            setStartTime(new Date(message.data.started_at));
-          }
-          break;
-          
-        case 'qr_code':
-          setQrCode(message.data.qr_code);
-          break;
-          
-        case 'log':
-          setLogs(prev => [...prev, {
-            timestamp: message.timestamp,
-            level: message.data.level || 'info',
-            message: message.data.message,
-            stage: message.data.stage
-          }]);
-          break;
-          
-        case 'completion':
-          setStatus(prev => prev ? { ...prev, status: 'completed' } : null);
-          break;
-          
-        case 'error':
-          setStatus(prev => prev ? { ...prev, status: 'error', error_message: message.data.error } : null);
-          break;
-      }
-    };
-
-    const handleError = (error: Event) => {
-      console.error('WebSocket error:', error);
-      setIsConnected(false);
-    };
-
-    const handleClose = (event: CloseEvent) => {
-      console.log('WebSocket closed:', event);
-      setIsConnected(false);
-    };
-
-    // Connect WebSocket
-    vpsService.connectWebSocket(jobId, handleMessage, handleError, handleClose);
-    setIsConnected(true);
-
-    return () => {
-      vpsService.disconnectWebSocket();
-    };
-  }, [jobId, startTime]);
-
-  // Fetch initial status and system health
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const [statusData, healthData] = await Promise.all([
-          vpsService.getJobStatus(jobId),
-          vpsService.getSystemHealth()
-        ]);
+    console.log(`🎯 [MONITOR] Setting up ultra-fast polling for job: ${jobId}`);
+    
+    // Create VPS polling service with enhanced callbacks
+    const polling = new VPSPollingService(
+      // Status update callback
+      (statusUpdate: VPSJobStatus) => {
+        console.log(`📊 [MONITOR] Status update:`, statusUpdate);
+        setStatus(statusUpdate);
+        setIsConnected(true);
         
-        setStatus(statusData);
-        setSystemHealth(healthData);
-        
-        if (statusData.started_at) {
-          setStartTime(new Date(statusData.started_at));
+        if (statusUpdate.started_at && !startTime) {
+          setStartTime(new Date(statusUpdate.started_at));
         }
-      } catch (error) {
-        console.error('Error fetching initial data:', error);
+        
+        // Add status changes to logs
+        setLogs(prev => [...prev, {
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: `Status: ${statusUpdate.status} - ${statusUpdate.message || 'Processing...'}`,
+          stage: statusUpdate.stage
+        }]);
+      },
+      
+      // QR code callback with enhanced tracking
+      (qrCodeData: string) => {
+        console.log(`📱 [MONITOR] NEW QR received:`, qrCodeData.substring(0, 50) + '...');
+        setQrCode(qrCodeData);
+        setQrUpdateCount(prev => prev + 1);
+        setLastQrUpdate(new Date().toLocaleTimeString());
+        setIsConnected(true);
+        
+        // Add QR update to logs
+        setLogs(prev => [...prev, {
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: `🆕 QR Code updated (#${qrUpdateCount + 1}) - Ready for scanning`,
+          stage: 'qr_update'
+        }]);
       }
-    };
+    );
 
-    fetchInitialData();
-  }, [jobId]);
+    setPollingService(polling);
+
+    // Start ultra-smart QR polling
+    polling.startSmartQRPolling(jobId);
+    
+    // Cleanup function
+    return () => {
+      console.log(`🧹 [MONITOR] Cleaning up polling for job: ${jobId}`);
+      polling.cleanup();
+    };
+  }, [jobId, startTime, qrUpdateCount]);
+
+  // Connection health monitoring
+  useEffect(() => {
+    if (!pollingService) return;
+
+    const healthCheck = setInterval(() => {
+      // Check if we're still receiving updates
+      const now = Date.now();
+      const lastActivity = pollingService.getQRStats().lastUpdate;
+      
+      if (lastActivity && (now - lastActivity) > 30000) { // 30 seconds without updates
+        console.warn(`⚠️ [MONITOR] No QR updates for 30+ seconds - connection may be stale`);
+        setIsConnected(false);
+      }
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(healthCheck);
+  }, [pollingService]);
 
   // Calculate elapsed time
   const getElapsedTime = () => {
@@ -166,35 +173,69 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
   };
 
   const handleRefreshQR = async () => {
+    if (!pollingService) return;
+    
     try {
-      const newQrCode = await vpsService.getQRCode(jobId);
+      console.log(`🔄 [MONITOR] Manual QR refresh requested`);
+      const newQrCode = await pollingService.refreshQRCode(jobId);
       if (newQrCode) {
-        setQrCode(newQrCode);
+        console.log(`✅ [MONITOR] QR refreshed successfully`);
+      } else {
+        console.log(`⚠️ [MONITOR] No new QR available`);
       }
     } catch (error) {
-      console.error('Error refreshing QR code:', error);
+      console.error('❌ [MONITOR] Error refreshing QR code:', error);
     }
   };
 
+  const handleForceRefresh = () => {
+    console.log(`🔄 [MONITOR] Force refresh - restarting polling service`);
+    if (pollingService) {
+      pollingService.cleanup();
+      setTimeout(() => {
+        pollingService.startSmartQRPolling(jobId);
+      }, 1000);
+    }
+  };
+
+  // Enhanced QR-ready detection with correct status types
+  const isQRReady = status && (
+    status.status === 'waiting_bankid' || 
+    status.stage === 'bankid' ||
+    status.stage === 'authentication' ||
+    status.stage === 'qr_streaming' ||
+    (status.message && status.message.toLowerCase().includes('qr'))
+  );
+
   return (
     <div className="space-y-6 bg-slate-950 text-white p-6 rounded-lg">
-      {/* Header */}
+      {/* Enhanced Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <Activity className="h-8 w-8 text-blue-400" />
           <div>
-            <h2 className="text-2xl font-bold">Live Automation Monitor</h2>
+            <h2 className="text-2xl font-bold">Ultra-Fast Automation Monitor</h2>
             <p className="text-slate-400">Job ID: {jobId}</p>
           </div>
         </div>
         
         <div className="flex items-center space-x-4">
+          {/* Enhanced Connection Status */}
           <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+            {isConnected ? <Wifi className="h-4 w-4 text-green-400" /> : <WifiOff className="h-4 w-4 text-red-400" />}
             <span className="text-sm text-slate-400">
-              {isConnected ? 'Connected' : 'Disconnected'}
+              {isConnected ? 'Live Connected' : 'Disconnected'}
             </span>
           </div>
+          
+          {/* QR Update Counter */}
+          {qrUpdateCount > 0 && (
+            <div className="flex items-center space-x-2 bg-green-900 px-3 py-1 rounded-full">
+              <Zap className="h-4 w-4 text-green-400" />
+              <span className="text-sm text-green-300">QR Updates: {qrUpdateCount}</span>
+            </div>
+          )}
           
           <Button onClick={onStop} variant="destructive" className="bg-red-600 hover:bg-red-700">
             <Square className="h-4 w-4 mr-2" />
@@ -203,18 +244,30 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
         </div>
       </div>
 
-      {/* Status Card */}
+      {/* Enhanced Status Card */}
       <Card className="bg-slate-900 border-slate-700">
         <CardHeader>
           <CardTitle className="flex items-center justify-between text-white">
             <div className="flex items-center space-x-3">
               <span className="text-2xl">{currentStatusConfig.emoji}</span>
-              <span>{currentStatusConfig.text}</span>
+              <div>
+                <span>{currentStatusConfig.text}</span>
+                {status?.stage && status.stage !== status.status && (
+                  <p className="text-sm text-slate-400">Stage: {status.stage}</p>
+                )}
+              </div>
             </div>
             
-            <div className="flex items-center space-x-2 text-slate-400">
-              <Clock className="h-4 w-4" />
-              <span className="font-mono">{getElapsedTime()}</span>
+            <div className="flex items-center space-x-4 text-slate-400">
+              <div className="flex items-center space-x-2">
+                <Clock className="h-4 w-4" />
+                <span className="font-mono">{getElapsedTime()}</span>
+              </div>
+              {lastQrUpdate && (
+                <div className="text-sm">
+                  Last QR: {lastQrUpdate}
+                </div>
+              )}
             </div>
           </CardTitle>
         </CardHeader>
@@ -224,64 +277,92 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
             className="h-3"
           />
           
-          {status?.cycle_count && (
-            <div className="flex justify-between text-sm text-slate-400">
+          <div className="grid grid-cols-3 gap-4 text-sm text-slate-400">
+            {status?.cycle_count && (
               <span>Cycle: {status.cycle_count}</span>
-              <span>Slots found: {status.slots_found || 0}</span>
-            </div>
-          )}
+            )}
+            <span>Slots found: {status?.slots_found || 0}</span>
+            <span>Progress: {currentStatusConfig.progress}%</span>
+          </div>
         </CardContent>
       </Card>
 
-      {/* QR Code Display */}
-      {qrCode && status?.status === 'waiting_bankid' && (
+      {/* Enhanced QR Code Display */}
+      {isQRReady && (
         <Card className="bg-slate-900 border-slate-700">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-white">
-              <Smartphone className="h-5 w-5" />
-              <span>BankID QR Code</span>
+            <CardTitle className="flex items-center justify-between text-white">
+              <div className="flex items-center space-x-2">
+                <Smartphone className="h-5 w-5" />
+                <span>Ultra-Fast BankID QR Code</span>
+                {qrUpdateCount > 0 && (
+                  <span className="bg-green-600 text-white px-2 py-1 rounded-full text-xs">
+                    #{qrUpdateCount}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button 
+                  onClick={handleRefreshQR}
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-600 text-slate-300 hover:bg-slate-800"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Refresh QR
+                </Button>
+                <Button 
+                  onClick={handleForceRefresh}
+                  variant="outline"
+                  size="sm"
+                  className="border-blue-600 text-blue-300 hover:bg-blue-900"
+                >
+                  <Zap className="h-4 w-4 mr-2" />
+                  Force Refresh
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col items-center space-y-4">
-              <div className="bg-white p-4 rounded-lg">
-                <img 
-                  src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`}
-                  alt="BankID QR Code"
-                  className="w-48 h-48 object-contain"
-                />
+            {qrCode ? (
+              <QRCodeDisplay 
+                qrCode={qrCode} 
+                jobId={jobId}
+                onRefresh={handleRefreshQR}
+              />
+            ) : (
+              <div className="flex flex-col items-center space-y-4 p-8">
+                <div className="w-48 h-48 bg-slate-800 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center space-y-3">
+                  <Smartphone className="h-16 w-16 text-slate-500 animate-pulse" />
+                  <p className="text-slate-400 text-center">
+                    Waiting for QR code from backend...
+                  </p>
+                  <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div className="w-full h-full bg-blue-500 animate-pulse"></div>
+                  </div>
+                </div>
+                
+                <p className="text-center text-slate-300">
+                  Ultra-fast QR polling is active - QR will appear within seconds!
+                </p>
               </div>
-              
-              <p className="text-center text-slate-300">
-                Scan this QR code with your BankID app
-              </p>
-              
-              <Button 
-                onClick={handleRefreshQR}
-                variant="outline"
-                size="sm"
-                className="border-slate-600 text-slate-300 hover:bg-slate-800"
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Refresh QR Code
-              </Button>
-            </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* System Metrics */}
+      {/* Enhanced System Metrics */}
       {systemHealth && (
         <Card className="bg-slate-900 border-slate-700">
           <CardHeader>
-            <CardTitle className="text-white">System Metrics</CardTitle>
+            <CardTitle className="text-white">Real-Time System Metrics</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="flex items-center space-x-2">
                 <Cpu className="h-4 w-4 text-blue-400" />
                 <div>
-                  <p className="text-sm text-slate-400">CPU</p>
+                  <p className="text-sm text-slate-400">CPU Usage</p>
                   <p className="font-semibold text-white">{systemHealth.cpu_usage}%</p>
                 </div>
               </div>
@@ -300,7 +381,7 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
               </div>
               
               <div>
-                <p className="text-sm text-slate-400">Browsers</p>
+                <p className="text-sm text-slate-400">Browser Instances</p>
                 <p className="font-semibold text-white">{systemHealth.browser_count}</p>
               </div>
             </div>
@@ -308,13 +389,13 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
         </Card>
       )}
 
-      {/* Logs Section */}
+      {/* Enhanced Logs Section */}
       <Card className="bg-slate-900 border-slate-700">
         <Collapsible open={logsExpanded} onOpenChange={setLogsExpanded}>
           <CollapsibleTrigger asChild>
             <CardHeader className="cursor-pointer hover:bg-slate-800 transition-colors">
               <CardTitle className="flex items-center justify-between text-white">
-                <span>Detailed Logs ({logs.length})</span>
+                <span>Live Activity Logs ({logs.length})</span>
                 {logsExpanded ? (
                   <ChevronUp className="h-5 w-5" />
                 ) : (
@@ -329,12 +410,16 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
               <ScrollArea className="h-64 w-full">
                 <div className="space-y-2">
                   {logs.length === 0 ? (
-                    <p className="text-slate-400 text-center py-4">No logs yet...</p>
+                    <p className="text-slate-400 text-center py-4">No activity logs yet...</p>
                   ) : (
                     logs.map((log, index) => (
                       <div 
                         key={index}
-                        className="flex items-start space-x-3 p-3 bg-slate-800 rounded-lg border-l-4 border-blue-500"
+                        className={`flex items-start space-x-3 p-3 rounded-lg border-l-4 ${
+                          log.stage === 'qr_update' 
+                            ? 'bg-green-900 border-green-500' 
+                            : 'bg-slate-800 border-blue-500'
+                        }`}
                       >
                         <div className="flex-shrink-0">
                           <span className="text-xs font-mono text-slate-400 bg-slate-700 px-2 py-1 rounded">
@@ -346,7 +431,7 @@ const LiveAutomationMonitor = ({ jobId, onStop }: LiveAutomationMonitorProps) =>
                           <p className="text-sm text-white break-words">
                             {log.message}
                           </p>
-                          {log.stage && (
+                          {log.stage && log.stage !== 'qr_update' && (
                             <p className="text-xs text-slate-400 mt-1">
                               Stage: {log.stage}
                             </p>
