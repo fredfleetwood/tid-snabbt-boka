@@ -204,6 +204,38 @@ export class VPSPollingService {
               // Same QR code - still good, shows system is stable
               console.log(`🔄 [QR-STABLE] Same QR (${responseTime}ms) - backend stable`);
             }
+          } else if (data.qr_data && data.success) {
+            // 🔧 FALLBACK: Use qr_data when qr_url is null (storage bucket missing)
+            const qrCode = data.qr_data;
+            const currentTime = Date.now();
+            
+            console.log(`📦 [QR-FALLBACK] Using direct QR data (storage bucket unavailable)`);
+            
+            // First QR detected via fallback
+            if (!hasSeenFirstQR) {
+              hasSeenFirstQR = true;
+              console.log(`🎉 [ULTRA-FAST-QR] FIRST QR DETECTED via fallback after ${qrDetectionAttempts} attempts!`);
+              console.log(`🎉 [ULTRA-FAST-QR] QR system using direct data fallback!`);
+            }
+            
+            // Enhanced QR deduplication with hash comparison
+            if (qrCode !== this.lastQrCode) {
+              this.qrUpdateCount++;
+              const timeSinceLastQr = this.lastQrTimestamp > 0 ? currentTime - this.lastQrTimestamp : 0;
+              
+              console.log(`⚡ [QR-FALLBACK #${this.qrUpdateCount}] NEW QR detected via direct data!`);
+              console.log(`📊 [QR-METRICS] Response: ${responseTime}ms, Gap: ${timeSinceLastQr}ms, Attempts: ${qrDetectionAttempts}`);
+              
+              this.lastQrCode = qrCode;
+              this.lastQrTimestamp = currentTime;
+              this.onQRCode?.(qrCode);
+              
+              // Reset detection attempts after successful QR
+              qrDetectionAttempts = 0;
+            } else {
+              // Same QR code - still good, shows system is stable
+              console.log(`🔄 [QR-STABLE] Same QR via fallback (${responseTime}ms) - backend stable`);
+            }
           } else {
             // No QR yet - count attempts
             if (data.error && data.error.includes('not found')) {
@@ -314,6 +346,31 @@ export class VPSPollingService {
             } else {
               // Same QR code - system is stable
               console.log(`🔄 [QR-STABLE] Identical QR (${responseTime}ms) - system stable`);
+            }
+          } else if (data.qr_data && data.success) {
+            // 🔧 FALLBACK: Use qr_data when qr_url is null (storage bucket missing)
+            const qrCode = data.qr_data;
+            const currentTime = Date.now();
+            
+            console.log(`📦 [QR-FALLBACK] Using direct QR data (storage bucket unavailable)`);
+            
+            // Enhanced QR deduplication with timing analysis
+            if (qrCode !== this.lastQrCode) {
+              this.qrUpdateCount++;
+              const timeSinceLastQr = this.lastQrTimestamp > 0 ? currentTime - this.lastQrTimestamp : 0;
+              
+              console.log(`⭐ [QR-FALLBACK #${this.qrUpdateCount}] NEW QR detected via direct data!`);
+              console.log(`📊 [QR-METRICS] Response: ${responseTime}ms, Gap: ${timeSinceLastQr}ms, Total attempts: ${totalAttempts}`);
+              
+              this.lastQrCode = qrCode;
+              this.lastQrTimestamp = currentTime;
+              this.onQRCode?.(qrCode);
+              
+              // Reset attempt counter after successful QR
+              totalAttempts = 0;
+            } else {
+              // Same QR code - system is stable
+              console.log(`🔄 [QR-STABLE] Identical QR via fallback (${responseTime}ms) - system stable`);
             }
           } else {
             // Check if QR storage is not ready yet
@@ -479,8 +536,19 @@ export class VPSPollingService {
           this.onQRCode?.(qrCode);
           
           return qrCode;
+        } else if (data.qr_data && data.success) {
+          // 🔧 FALLBACK: Use qr_data when qr_url is null (storage bucket missing)
+          const qrCode = data.qr_data;
+          console.log(`✅ [QR-REFRESH] Found QR via direct data fallback (${responseTime}ms)`);
+          
+          // Update tracking and send to callback
+          this.lastQrCode = qrCode;
+          this.lastQrTimestamp = Date.now();
+          this.onQRCode?.(qrCode);
+          
+          return qrCode;
         } else {
-          console.log(`⭕ [QR-REFRESH] No QR URL in Storage (${responseTime}ms)`);
+          console.log(`⭕ [QR-REFRESH] No QR URL or data in Storage (${responseTime}ms)`);
           return null;
         }
       } else {
