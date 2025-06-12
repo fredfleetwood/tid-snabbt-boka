@@ -334,8 +334,9 @@ serve(async (req: Request) => {
       try {
         await logger.info('vps-starting', 'Starting VPS automation via internal proxy');
         
-        // Prepare VPS request
+        // Prepare VPS request - CRITICAL: Include job_id so VPS uses same ID as database session
         const vpsConfig = {
+          job_id: testJobId,  // ⭐ FIXED: Include job_id for consistency
           user_id: data.user.id,
           config_id: config_id,
           personal_number: config.personnummer,

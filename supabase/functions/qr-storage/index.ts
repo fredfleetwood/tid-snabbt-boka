@@ -48,31 +48,39 @@ serve(async (req) => {
       const timestamp_str = timestamp || new Date().toISOString();
       const filename = `qr-codes/${job_id}/${Date.now()}.png`;
       
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabaseClient.storage
-        .from('booking-assets')
-        .upload(filename, binaryData, {
-          contentType: 'image/png',
-          cacheControl: '60', // Cache for 60 seconds
-          upsert: false
-        });
+      // Try to upload to Supabase Storage
+      let uploadSuccess = false;
+      let publicUrl = '';
+      
+      try {
+        const { data: uploadData, error: uploadError } = await supabaseClient.storage
+          .from('booking-assets')
+          .upload(filename, binaryData, {
+            contentType: 'image/png',
+            cacheControl: '60', // Cache for 60 seconds
+            upsert: false
+          });
 
-      if (uploadError) {
-        console.error('Storage upload failed:', uploadError);
-        throw uploadError;
+        if (uploadError) {
+          console.error('Storage upload failed:', uploadError);
+          // Don't throw - continue with fallback
+        } else {
+          // Get public URL
+          const { data: urlData } = supabaseClient.storage
+            .from('booking-assets')
+            .getPublicUrl(filename);
+          publicUrl = urlData.publicUrl;
+          uploadSuccess = true;
+          console.log('QR code uploaded to:', filename);
+        }
+      } catch (storageError) {
+        console.error('Storage bucket error (bucket may not exist):', storageError);
+        // Continue with fallback - store QR data directly
       }
 
-      console.log('QR code uploaded to:', filename);
 
-      // Get public URL
-      const { data: urlData } = supabaseClient.storage
-        .from('booking-assets')
-        .getPublicUrl(filename);
 
-      const publicUrl = urlData.publicUrl;
-      console.log('QR code public URL:', publicUrl);
-
-      // Find the booking session and update with QR URL
+      // Find the booking session and update with QR
       const { data: session, error: sessionError } = await supabaseClient
         .from('booking_sessions')
         .select('*')
@@ -80,22 +88,68 @@ serve(async (req) => {
         .single();
 
       if (!sessionError && session) {
-        // Update session with QR URL
-        const updatedDetails = {
-          ...session.booking_details,
-          qr_image_url: publicUrl,
-          qr_filename: filename,
-          qr_updated_at: timestamp_str,
-          qr_auth_ref: auth_ref
-        };
-
-        await supabaseClient
-          .from('booking_sessions')
-          .update({
-            booking_details: updatedDetails,
-            qr_code_image: publicUrl // Store URL instead of base64
-          })
-          .eq('id', session.id);
+        let updatedDetails;
+        let qrPayload;
+        
+        if (uploadSuccess && publicUrl) {
+          // Storage upload successful - use URL
+          updatedDetails = {
+            ...session.booking_details,
+            qr_image_url: publicUrl,
+            qr_filename: filename,
+            qr_updated_at: timestamp_str,
+            qr_auth_ref: auth_ref,
+            qr_storage_method: 'supabase_storage'
+          };
+          
+          qrPayload = {
+            session_id: session.id,
+            job_id: job_id,
+            qr_url: publicUrl,
+            qr_filename: filename,
+            timestamp: timestamp_str,
+            auth_ref: auth_ref,
+            storage_method: 'url'
+          };
+          
+          await supabaseClient
+            .from('booking_sessions')
+            .update({
+              booking_details: updatedDetails,
+              qr_code_image: publicUrl
+            })
+            .eq('id', session.id);
+            
+          console.log('QR code stored in Supabase Storage and broadcasted');
+        } else {
+          // Storage failed - fallback to direct QR data
+          updatedDetails = {
+            ...session.booking_details,
+            qr_image_data: qr_image_data,
+            qr_updated_at: timestamp_str,
+            qr_auth_ref: auth_ref,
+            qr_storage_method: 'direct_data'
+          };
+          
+          qrPayload = {
+            session_id: session.id,
+            job_id: job_id,
+            qr_code: qr_image_data,
+            timestamp: timestamp_str,
+            auth_ref: auth_ref,
+            storage_method: 'direct'
+          };
+          
+          await supabaseClient
+            .from('booking_sessions')
+            .update({
+              booking_details: updatedDetails,
+              qr_code_image: qr_image_data
+            })
+            .eq('id', session.id);
+            
+          console.log('QR code stored as direct data (storage fallback)');
+        }
 
         // Send real-time notification about new QR
         await supabaseClient
@@ -103,24 +157,17 @@ serve(async (req) => {
           .send({
             type: 'broadcast',
             event: 'qr_code_update',
-            payload: {
-              session_id: session.id,
-              job_id: job_id,
-              qr_url: publicUrl,
-              qr_filename: filename,
-              timestamp: timestamp_str,
-              auth_ref: auth_ref
-            }
+            payload: qrPayload
           });
-
-        console.log('QR code stored and broadcasted successfully');
       }
 
       return new Response(JSON.stringify({ 
         success: true,
-        qr_url: publicUrl,
-        filename: filename,
-        message: 'QR code stored successfully'
+        qr_url: uploadSuccess ? publicUrl : null,
+        qr_data: uploadSuccess ? null : qr_image_data,
+        filename: uploadSuccess ? filename : null,
+        storage_method: uploadSuccess ? 'supabase_storage' : 'direct_data',
+        message: uploadSuccess ? 'QR code stored in Supabase Storage' : 'QR code stored as direct data (storage fallback)'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

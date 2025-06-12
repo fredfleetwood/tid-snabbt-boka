@@ -71,11 +71,11 @@ serve(async (req) => {
       throw new Error('job_id is required');
     }
 
-    // Find the session by job_id
+    // Find the session by job_id (stored in booking_details JSON)
     const { data: session, error: sessionError } = await supabaseClient
       .from('booking_sessions')
       .select('*')
-      .eq('job_id', job_id)
+      .eq('booking_details->>job_id', job_id)  // Query JSON field correctly
       .single();
 
     if (sessionError || !session) {
